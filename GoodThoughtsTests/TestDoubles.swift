@@ -51,3 +51,50 @@ final class TestClock: @unchecked Sendable {
         current = DailyPick.calendar().date(byAdding: .day, value: days, to: current)!
     }
 }
+
+/// Holds "scheduled" reminders in memory and plays the permission states.
+final class FakeNotificationCenter: NotificationCentering, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _status: ReminderAuthorization
+    private var _statusAfterRequest: ReminderAuthorization
+    private var _requestError: String?
+    private var _requests = 0
+    private var _pending: [String: PlannedReminder?]
+
+    /// `foreign` are other pending notifications that must be left alone.
+    init(status: ReminderAuthorization = .authorized, afterRequest: ReminderAuthorization = .authorized,
+         requestError: String? = nil, foreign: [String] = []) {
+        _status = status
+        _statusAfterRequest = afterRequest
+        _requestError = requestError
+        _pending = Dictionary(uniqueKeysWithValues: foreign.map { ($0, nil) })
+    }
+
+    private func locked<T>(_ body: () -> T) -> T { lock.lock(); defer { lock.unlock() }; return body() }
+
+    var requestCount: Int { locked { _requests } }
+    var pendingIDs: [String] { locked { _pending.keys.sorted() } }
+    var scheduled: [PlannedReminder] { locked { _pending.values.compactMap { $0 }.sorted { $0.fireDate < $1.fireDate } } }
+    func set(status: ReminderAuthorization) { locked { _status = status } }
+    func seed(_ identifier: String) { locked { _pending[identifier] = .some(nil) } }
+
+    func authorization() async -> ReminderAuthorization { locked { _status } }
+
+    func requestAuthorization() async -> String? {
+        locked {
+            _requests += 1
+            if _status == .notDetermined && _requestError == nil { _status = _statusAfterRequest }
+            return _requestError
+        }
+    }
+
+    func pendingIdentifiers() async -> [String] { locked { Array(_pending.keys) } }
+
+    func removePending(_ identifiers: [String]) {
+        locked { for id in identifiers { _pending.removeValue(forKey: id) } }
+    }
+
+    func schedule(_ reminder: PlannedReminder) async throws {
+        locked { _pending[reminder.identifier] = reminder }
+    }
+}
