@@ -11,8 +11,9 @@ The site's source is next door at `../goodthoughts` (its own repo, STACK-42/good
 - Swift 6 language mode, SwiftUI, macOS 13+. `MenuBarExtra` with `.menuBarExtraStyle(.window)`, no Dock icon (`LSUIElement = YES`).
 - XcodeGen: `project.yml` is the source of truth. `GoodThoughts.xcodeproj` is generated and gitignored, so never hand-edit it; change `project.yml` and regenerate.
 - Targets: `GoodThoughts` (the app, sources in `GoodThoughts/`) and `GoodThoughtsTests` (XCTest unit tests hosted in the app, in `GoodThoughtsTests/`).
-- App Sandbox on, with outgoing network only. Ad-hoc signing (`CODE_SIGN_IDENTITY = -`) until distribution is set up.
-- Zero dependencies. Ask before adding one (Sparkle for updates is the likely exception).
+- App Sandbox on, with outgoing network only, plus the two mach-lookup exceptions Sparkle's installer needs.
+- No Apple Developer account, by the user's choice: builds are ad-hoc signed (`CODE_SIGN_IDENTITY = -`) and not notarised, and users approve the app once in Privacy & Security. The hardened runtime is off, because it only matters for notarisation and its library validation can reject the ad-hoc-signed Sparkle framework.
+- One dependency: Sparkle 2 (Swift package, pinned in `project.yml`) for automatic updates from GitHub Releases. `GoodThoughts/Updates/Updater.swift` wraps it in `#if canImport(Sparkle)`. Ask before adding any other.
 
 ## Commands
 
@@ -34,7 +35,7 @@ swift scripts/make-sample-wallpapers.swift  # regenerate the placeholder PNGs in
 scripts/make-dmg.sh <app> <out.dmg>       # pack an app into a drag-to-install disk image
 ```
 
-Releases: pushing a `v*` tag runs `.github/workflows/release.yml` (Developer ID signing, notarisation, `.dmg`, GitHub Release). Setup and secrets are in `docs/RELEASING.md`. Tagging and releasing are the user's call: never push a tag yourself.
+Releases: pushing a `v*` tag runs `.github/workflows/release.yml`, which builds the app, packs the `.dmg`, signs it with the Sparkle EdDSA key (secret `SPARKLE_ED_PRIVATE_KEY`) and publishes it with `appcast.xml`. Details are in `docs/RELEASING.md`. Tagging and releasing are the user's call: never push a tag yourself. Never change `SUPublicEDKey` either; installed copies would stop accepting updates.
 
 `run.sh` reads its build settings from `project.yml` and copies every non-Swift file under `GoodThoughts/` into `Contents/Resources`, flattened as Xcode does. It can't compile asset catalogs or expand macros, so don't add either; keep resources as plain files. That rules out `#Preview` and, in the macOS 27 SDK, SwiftUI's `@State` (now a macro): keep view state in an `ObservableObject` held by `@StateObject`, or in `AppModel`. `@StateObject`, `@ObservedObject`, `@Published` and `@Environment` are fine. The agent can't see the screen (no Screen Recording permission), so the user checks the UI by hand.
 
@@ -93,10 +94,10 @@ If something in the plan turns out to be wrong or impossible on macOS, stop and 
 
 ## Git (overrides the global "don't push unless I ask")
 
-The repo is private, so every change goes on its own branch, never straight to `main`.
+The repo is public, so following the global rule for public repos, work directly on `main`: no feature branches unless the user asks for one.
 
-Push and merge ordinary work without asking: when a change is done and committed, push the branch, open a pull request with `gh pr create`, wait for CI to pass, merge with `gh pr merge --merge --delete-branch`, and switch back to an up-to-date `main`. Ordinary work covers features, fixes, tests, docs, refactors and CI tweaks.
+Push ordinary work without asking: when a change is done and committed, push `main` and check that CI passes; if it fails, fix it straight away. Ordinary work covers features, fixes, tests, docs, refactors and CI tweaks.
 
-Ask first for anything hard to undo or outside the code: force-pushes or history rewrites, deleting branches other than the merged one, releases and tags, changing repo settings or secrets, adding a dependency, and anything that touches signing, notarisation or the user's Apple Developer account.
+Ask first for anything hard to undo or outside the code: force-pushes or history rewrites, tags and releases, changing repo settings or secrets (including the Sparkle key), and adding a dependency.
 
-All other global git rules still apply: small commits by the seven rules, run through the humanizer, never merge red CI, and open issues for out-of-scope work instead of leaving TODO comments.
+All other global git rules still apply: small commits by the seven rules, run through the humanizer, and open issues for out-of-scope work instead of leaving TODO comments.
