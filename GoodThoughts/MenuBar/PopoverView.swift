@@ -44,6 +44,7 @@ struct PopoverView: View {
                 }
                 if let quote = model.todaysQuote {
                     QuoteSummary(quote: quote)
+                    ApplyControls(model: model, quote: quote)
                 } else {
                     Text("The feed has no quotes yet.").foregroundStyle(.secondary)
                 }
@@ -95,5 +96,37 @@ private struct QuoteSummary: View {
 
     private var byline: String {
         [quote.author, quote.source].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+}
+
+/// The Apply button, its progress and errors, and the Spaces caveat.
+private struct ApplyControls: View {
+    @ObservedObject var model: AppModel
+    let quote: Quote
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Button {
+                    Task { await model.apply(quote) }
+                } label: {
+                    Text(model.applyState == .applied(quote.id) ? "Applied" : "Apply as wallpaper")
+                }
+                .disabled(model.applyState == .applying || quote.wallpapers.isEmpty)
+                if model.applyState == .applying {
+                    ProgressView().controlSize(.small)
+                }
+            }
+            if case .failed(let error) = model.applyState {
+                Text(error.errorDescription ?? "Couldn't set the wallpaper.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Text("Applies to the current desktop. Other Spaces keep their wallpaper.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }

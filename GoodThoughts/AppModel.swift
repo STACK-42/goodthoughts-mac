@@ -12,16 +12,42 @@ final class AppModel: ObservableObject {
     /// Reload at most this often when the popover opens.
     static let refreshInterval: TimeInterval = 60 * 60
 
+    enum ApplyState: Equatable {
+        case idle
+        case applying
+        /// The quote id that was applied.
+        case applied(String)
+        case failed(ApplyError)
+    }
+
     @Published private(set) var phase: Phase = .loading
+    @Published private(set) var applyState: ApplyState = .idle
     /// The moment "today" was last worked out. Moves forward on refresh.
     @Published private(set) var now: Date = .now
 
     private let loader: FeedLoader
+    private let applier: WallpaperApplier
     private var lastLoaded: Date?
     private var isLoading = false
 
-    init(loader: FeedLoader = .standard()) {
+    init(loader: FeedLoader = .standard(),
+         applier: WallpaperApplier = WallpaperApplier(desktop: SystemDesktop(), cache: .standard())) {
         self.loader = loader
+        self.applier = applier
+    }
+
+    /// Downloads the quote's wallpaper and sets it on every screen (current Space only).
+    func apply(_ quote: Quote) async {
+        guard applyState != .applying else { return }
+        applyState = .applying
+        do {
+            try await applier.apply(quote)
+            applyState = .applied(quote.id)
+        } catch let error as ApplyError {
+            applyState = .failed(error)
+        } catch {
+            applyState = .failed(.downloadFailed(error.localizedDescription))
+        }
     }
 
     var feed: LoadedFeed? {
