@@ -7,6 +7,8 @@ struct GoodThoughtsApp: App {
 
     init() {
         BrandFont.registerAll()
+        // Set before launch finishes, so a click on a reminder that launched the app is handled.
+        ReminderNotificationDelegate.install()
     }
 
     var body: some Scene {

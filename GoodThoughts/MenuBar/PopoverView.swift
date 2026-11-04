@@ -27,6 +27,7 @@ struct PopoverView: View {
         .foregroundStyle(Theme.ink)
         .task {
             model.refreshLoginItem()
+            await model.refreshReminderAuthorization()
             await model.dayMayHaveChanged()
         }
     }
@@ -379,6 +380,7 @@ private struct SettingsSection: View {
                 Label(text: "Set each morning", color: Theme.ink)
             }
             .help("Sets the day's wallpaper the first time the Mac is awake each day")
+            ReminderSettings(model: model)
             Toggle(isOn: Binding(get: { model.loginItem == .enabled || model.loginItem == .requiresApproval },
                                  set: { on in model.setLaunchAtLogin(on) })) {
                 Label(text: "Open at login", color: Theme.ink)
@@ -403,6 +405,79 @@ private struct SettingsSection: View {
         .toggleStyle(.checkbox)
         .padding(.horizontal, PopoverView.gutter)
         .padding(.bottom, 12)
+    }
+
+    private func hint(_ text: String) -> some View {
+        Text(text)
+            .font(Typography.meta(10))
+            .foregroundStyle(Theme.muted)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// The morning reminder: on or off, its time, and what to do if notifications aren't allowed.
+private struct ReminderSettings: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Toggle(isOn: Binding(get: { model.reminderEnabled },
+                                     set: { on in Task { await model.setReminderEnabled(on) } })) {
+                    Label(text: "Morning reminder", color: Theme.ink)
+                }
+                .help("A notification with the day's quote")
+                if model.reminderEnabled {
+                    DatePicker("Reminder time", selection: time, displayedComponents: .hourAndMinute)
+                        .labelsHidden()
+                        .datePickerStyle(.field)
+                        .font(Typography.meta(11))
+                        .fixedSize()
+                }
+            }
+            if model.reminderEnabled {
+                switch model.reminderAuthorization {
+                case .denied:
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        hint("Notifications are off for goodthoughts.")
+                        Button { model.openNotificationSettings() } label: {
+                            Label(text: "Settings", color: Theme.ink).underline(color: Theme.rule)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Open System Settings › Notifications")
+                    }
+                case .notDetermined:
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        hint("goodthoughts needs permission to notify you.")
+                        Button { Task { await model.requestReminderPermission() } } label: {
+                            Label(text: "Allow", color: Theme.ink).underline(color: Theme.rule)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                case .authorized:
+                    EmptyView()
+                }
+                if let error = model.reminderError {
+                    Notice(text: "macOS wouldn't allow notifications: \(error)")
+                }
+            }
+        }
+    }
+
+    /// The reminder time as a Date today, for the picker.
+    private var time: Binding<Date> {
+        Binding(
+            get: {
+                let calendar = Calendar.current
+                return calendar.date(bySettingHour: model.reminderTime.hour, minute: model.reminderTime.minute,
+                                     second: 0, of: Date()) ?? Date()
+            },
+            set: { date in
+                let parts = Calendar.current.dateComponents([.hour, .minute], from: date)
+                let time = ReminderTime(hour: parts.hour ?? 9, minute: parts.minute ?? 0)
+                Task { await model.setReminderTime(time) }
+            }
+        )
     }
 
     private func hint(_ text: String) -> some View {

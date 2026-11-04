@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 
 /// App state shared by the menu bar label and the popover.
 @MainActor
@@ -30,12 +30,19 @@ final class AppModel: ObservableObject {
     @Published private(set) var applyDaily: Bool
     @Published private(set) var loginItem: LoginItemStatus
     @Published private(set) var loginItemError: String?
+    /// A notification with the day's quote each morning.
+    @Published private(set) var reminderEnabled: Bool
+    @Published private(set) var reminderTime: ReminderTime
+    @Published private(set) var reminderAuthorization: ReminderAuthorization = .notDetermined
+    /// macOS's reason, when it refused to ask for notification permission.
+    @Published private(set) var reminderError: String?
 
     private let loader: FeedLoader
     private let applier: WallpaperApplier
     private let preferences: Preferences
     private let login: LoginItemControlling
     private let clock: @Sendable () -> Date
+    private let reminders: ReminderScheduler
     private var lastLoaded: Date?
     private var isLoading = false
     private var watcher: DayWatcher?
@@ -44,14 +51,18 @@ final class AppModel: ObservableObject {
          applier: WallpaperApplier = WallpaperApplier(desktop: SystemDesktop(), cache: .standard()),
          preferences: Preferences = Preferences(),
          login: LoginItemControlling = SystemLoginItem(),
+         reminders: ReminderScheduler = ReminderScheduler(),
          clock: @escaping @Sendable () -> Date = { Date() }) {
         self.loader = loader
         self.applier = applier
         self.preferences = preferences
         self.login = login
         self.clock = clock
+        self.reminders = reminders
         now = clock()
         applyDaily = preferences.applyDaily
+        reminderEnabled = preferences.reminderEnabled
+        reminderTime = preferences.reminderTime
         loginItem = login.status
     }
 
@@ -88,8 +99,10 @@ final class AppModel: ObservableObject {
         defer { isLoading = false }
         do {
             let loaded = try await loader.load()
+            let feedChanged = feed?.feed != loaded.feed
             phase = .ready(loaded)
             lastLoaded = clock()
+            if feedChanged { await rescheduleReminders() }
         } catch let error as FeedError {
             // Keep showing what we had if a reload fails.
             if feed == nil { phase = .failed(error) }
@@ -142,6 +155,7 @@ final class AppModel: ObservableObject {
         if newDay { dayOffset = 0 }
         await refresh(force: newDay || feed == nil)
         await applyTodayIfDue()
+        await rescheduleReminders()
     }
 
     /// Applies today's quote once per day when daily apply is on. A failure isn't
@@ -157,6 +171,62 @@ final class AppModel: ObservableObject {
         preferences.applyDaily = enabled
         // Same path as a new day, so it loads the feed first if it hasn't arrived yet.
         if enabled { await dayMayHaveChanged() }
+    }
+
+    // MARK: Morning reminder
+
+    /// Turning it on asks for notification permission the first time. If permission is
+    /// refused the setting stays on, so reminders start once it's allowed in System Settings.
+    func setReminderEnabled(_ enabled: Bool) async {
+        reminderEnabled = enabled
+        preferences.reminderEnabled = enabled
+        if enabled { await askForReminderPermission() } else { reminderError = nil }
+        await rescheduleReminders()
+    }
+
+    func setReminderTime(_ time: ReminderTime) async {
+        guard time != reminderTime else { return }
+        reminderTime = time
+        preferences.reminderTime = time
+        await rescheduleReminders()
+    }
+
+    /// Asks again only if macOS has never been asked; otherwise just rereads the state.
+    func requestReminderPermission() async {
+        await askForReminderPermission()
+        await rescheduleReminders()
+    }
+
+    private func askForReminderPermission() async {
+        let result = await reminders.requestPermission()
+        reminderAuthorization = result.status
+        reminderError = result.error
+    }
+
+    func refreshReminderAuthorization() async {
+        reminderAuthorization = await reminders.authorization()
+    }
+
+    /// Schedules the next week of reminders from the feed we have (cached if offline).
+    /// With no feed at all, existing reminders are kept rather than cleared.
+    func rescheduleReminders() async {
+        guard let quotes = feed?.feed.quotes else {
+            await refreshReminderAuthorization()
+            return
+        }
+        reminderAuthorization = await reminders.reschedule(
+            enabled: reminderEnabled, quotes: quotes, time: reminderTime, now: clock())
+    }
+
+    func openNotificationSettings() {
+        let id = Bundle.main.bundleIdentifier ?? "page.goodthoughts.mac"
+        let candidates = [
+            "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(id)",
+            "x-apple.systempreferences:com.apple.preference.notifications",
+        ]
+        for link in candidates {
+            if let url = URL(string: link), NSWorkspace.shared.open(url) { return }
+        }
     }
 
     // MARK: Login item

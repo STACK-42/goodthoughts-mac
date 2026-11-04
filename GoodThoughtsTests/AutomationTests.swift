@@ -10,6 +10,7 @@ final class AutomationTests: XCTestCase {
     private var clock: TestClock!
     private var desktop: FakeDesktop!
     private var login: FakeLoginItem!
+    private var notifications: FakeNotificationCenter!
 
     override func setUp() async throws {
         let id = UUID().uuidString.lowercased()
@@ -22,6 +23,7 @@ final class AutomationTests: XCTestCase {
         clock = TestClock(noon)
         desktop = FakeDesktop([DesktopScreen(id: "1", name: "Display", size: CGSize(width: 1920, height: 1080))])
         login = FakeLoginItem()
+        notifications = FakeNotificationCenter(status: .notDetermined)
 
         let quotes = (0..<5).map { i in
             #"{"id": "q\#(i)", "text": "Quote \#(i)", "wallpapers": {"16x9": "https://\#(imageHost!)/q\#(i).png"}}"#
@@ -46,6 +48,7 @@ final class AutomationTests: XCTestCase {
             applier: WallpaperApplier(desktop: desktop, cache: WallpaperCache(directory: directory.appendingPathComponent("img"), session: session)),
             preferences: Preferences(defaults: UserDefaults(suiteName: suiteName)!),
             login: login,
+            reminders: ReminderScheduler(center: notifications),
             clock: { clock.now }
         )
     }
@@ -145,5 +148,29 @@ final class AutomationTests: XCTestCase {
         model.setLaunchAtLogin(true)
         XCTAssertEqual(model.loginItem, .disabled)
         XCTAssertEqual(model.loginItemError, "Operation not permitted")
+    }
+
+    func testMorningReminderFollowsTheSettings() async {
+        let model = makeModel()
+        await model.dayMayHaveChanged()
+        XCTAssertFalse(model.reminderEnabled, "Off by default")
+        XCTAssertEqual(model.reminderTime, .default)
+        XCTAssertTrue(notifications.pendingIDs.isEmpty)
+
+        await model.setReminderEnabled(true)
+        XCTAssertEqual(notifications.requestCount, 1)
+        XCTAssertEqual(model.reminderAuthorization, .authorized)
+        XCTAssertEqual(notifications.scheduled.count, 7)
+
+        await model.setReminderTime(ReminderTime(hour: 7, minute: 30))
+        XCTAssertTrue(notifications.scheduled.allSatisfy { $0.time == ReminderTime(hour: 7, minute: 30) })
+        XCTAssertEqual(makeModel().reminderTime, ReminderTime(hour: 7, minute: 30), "The time persists")
+
+        clock.advance(days: 1)
+        await model.dayMayHaveChanged()
+        XCTAssertEqual(notifications.scheduled.count, 7, "A new day tops the week back up")
+
+        await model.setReminderEnabled(false)
+        XCTAssertTrue(notifications.pendingIDs.isEmpty)
     }
 }
