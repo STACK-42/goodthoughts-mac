@@ -18,12 +18,16 @@ struct PopoverView: View {
         VStack(spacing: 0) {
             Header(number: quote?.number)
             content
+            SettingsSection(model: model)
             Footer(status: statusLine)
         }
         .frame(width: Self.width)
         .background(Theme.paper)
         .foregroundStyle(Theme.ink)
-        .task { await model.refresh() }
+        .task {
+            model.refreshLoginItem()
+            await model.dayMayHaveChanged()
+        }
     }
 
     @ViewBuilder private var content: some View {
@@ -358,6 +362,53 @@ private struct Notice: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Daily apply and open at login.
+private struct SettingsSection: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Hairline()
+                .padding(.bottom, 4)
+            Toggle(isOn: Binding(get: { model.applyDaily },
+                                 set: { on in Task { await model.setApplyDaily(on) } })) {
+                Label(text: "Set each morning", color: Theme.ink)
+            }
+            .help("Sets the day's wallpaper the first time the Mac is awake each day")
+            Toggle(isOn: Binding(get: { model.loginItem == .enabled || model.loginItem == .requiresApproval },
+                                 set: { on in model.setLaunchAtLogin(on) })) {
+                Label(text: "Open at login", color: Theme.ink)
+            }
+            .disabled(model.loginItem == .unavailable)
+            if model.applyDaily && model.loginItem == .disabled {
+                hint("Turn on Open at login so the morning wallpaper still happens after a restart.")
+            }
+            if model.loginItem == .requiresApproval {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    hint("Allow goodthoughts in System Settings to finish.")
+                    Button { model.openLoginItemsSettings() } label: {
+                        Label(text: "Open", color: Theme.ink).underline(color: Theme.rule)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            if let error = model.loginItemError {
+                Notice(text: "Couldn't change Open at login: \(error)")
+            }
+        }
+        .toggleStyle(.checkbox)
+        .padding(.horizontal, PopoverView.gutter)
+        .padding(.bottom, 12)
+    }
+
+    private func hint(_ text: String) -> some View {
+        Text(text)
+            .font(Typography.meta(10))
+            .foregroundStyle(Theme.muted)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
