@@ -1,0 +1,77 @@
+name: GoodThoughts
+
+options:
+  bundleIdPrefix: page.goodthoughts
+  deploymentTarget:
+    macOS: "13.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+    # Ad-hoc signing until round 7 sets up a Developer ID.
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+    ENABLE_HARDENED_RUNTIME: YES
+    DEAD_CODE_STRIPPING: YES
+
+targets:
+  GoodThoughts:
+    type: application
+    platform: macOS
+    sources:
+      - path: GoodThoughts
+    info:
+      path: GoodThoughts/Info.plist
+      properties:
+        CFBundleDisplayName: goodthoughts
+        CFBundleName: goodthoughts
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSApplicationCategoryType: public.app-category.lifestyle
+        LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
+        NSHumanReadableCopyright: ""
+    entitlements:
+      path: GoodThoughts/GoodThoughts.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: page.goodthoughts.mac
+        PRODUCT_NAME: GoodThoughts
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: NO
+        ENABLE_PREVIEWS: YES
+
+  GoodThoughtsTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: GoodThoughtsTests
+    dependencies:
+      - target: GoodThoughts
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: page.goodthoughts.mac.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/GoodThoughts.app/Contents/MacOS/GoodThoughts"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+
+schemes:
+  GoodThoughts:
+    build:
+      targets:
+        GoodThoughts: all
+        GoodThoughtsTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: true
+      targets:
+        - GoodThoughtsTests
