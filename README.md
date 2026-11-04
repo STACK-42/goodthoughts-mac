@@ -1,5 +1,7 @@
 # goodthoughts for Mac
 
+[![CI](https://github.com/STACK-42/goodthoughts-mac/actions/workflows/ci.yml/badge.svg)](https://github.com/STACK-42/goodthoughts-mac/actions/workflows/ci.yml)
+
 A menu bar app that shows one quote a day from [goodthoughts](https://goodthoughts.page) and sets it as your desktop wallpaper with one click.
 
 The wallpapers are drawn by the goodthoughts site, which publishes them with a JSON feed at `https://goodthoughts.page/wallpapers.json`. The app reads the feed, works out today's quote from the date, and applies its image to each screen. Every Mac gets the same quote on the same day.
