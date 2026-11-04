@@ -62,4 +62,4 @@ The menu bar icon is generated from the brand mark by `swift scripts/make-menuba
 
 ## Status
 
-Feature complete for a first release. The feed isn't live yet, so debug builds use a bundled sample feed with placeholder wallpapers until it is.
+Feature complete for a first release. The app reads the live feed at `https://goodthoughts.page/wallpapers.json`. Debug builds fall back to a bundled sample feed with placeholder wallpapers only when there's no network and no cached feed.

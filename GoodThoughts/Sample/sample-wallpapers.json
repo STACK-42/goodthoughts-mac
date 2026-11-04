@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "generated": "2026-11-04T00:00:00Z",
-  "note": "Sample feed for debug builds and tests until https://goodthoughts.page/wallpapers.json is live. Wallpaper paths are relative to this file. The PNGs are placeholders from scripts/make-sample-wallpapers.swift.",
+  "note": "Sample feed for tests, and for debug builds when https://goodthoughts.page/wallpapers.json can't be reached and nothing is cached. Wallpaper paths are relative to this file. The PNGs are placeholders from scripts/make-sample-wallpapers.swift.",
   "quotes": [
     {
       "id": "seneca-imagination",
