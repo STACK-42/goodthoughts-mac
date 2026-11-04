@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 #if canImport(Sparkle)
 import Sparkle
@@ -17,7 +18,6 @@ final class Updater: ObservableObject {
     #if canImport(Sparkle)
     private let controller: SPUStandardUpdaterController?
     private let userDriverDelegate = GentleReminders()
-    private var observation: NSKeyValueObservation?
     #endif
 
     init() {
@@ -30,10 +30,8 @@ final class Updater: ObservableObject {
         let controller = SPUStandardUpdaterController(
             startingUpdater: true, updaterDelegate: nil, userDriverDelegate: userDriverDelegate)
         self.controller = controller
-        observation = controller.updater.observe(\.canCheckForUpdates, options: [.initial, .new]) { [weak self] updater, _ in
-            let value = updater.canCheckForUpdates
-            Task { @MainActor in self?.canCheck = value }
-        }
+        // As in Sparkle's SwiftUI guide: mirror canCheckForUpdates for the Updates link.
+        controller.updater.publisher(for: \.canCheckForUpdates).assign(to: &$canCheck)
         #endif
     }
 
