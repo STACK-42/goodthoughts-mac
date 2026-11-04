@@ -41,7 +41,7 @@ Releases: pushing a `v*` tag runs `.github/workflows/release.yml`, which builds 
 
 ## Feed contract
 
-`https://goodthoughts.page/wallpapers.json`. It's proposed as v1 and isn't live yet. Until it is, code against the local fixture (in the test bundle, and as a debug-build fallback).
+`https://goodthoughts.page/wallpapers.json`, live at v1. Tests use the local fixture in the test bundle, and debug builds fall back to it when there's no network and no cache.
 
 ```json
 {
