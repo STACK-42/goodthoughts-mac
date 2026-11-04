@@ -155,7 +155,8 @@ final class AppModel: ObservableObject {
     func setApplyDaily(_ enabled: Bool) async {
         applyDaily = enabled
         preferences.applyDaily = enabled
-        if enabled { await applyTodayIfDue() }
+        // Same path as a new day, so it loads the feed first if it hasn't arrived yet.
+        if enabled { await dayMayHaveChanged() }
     }
 
     // MARK: Login item
