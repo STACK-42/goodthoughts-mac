@@ -4,6 +4,10 @@ import SwiftUI
 struct GoodThoughtsApp: App {
     @StateObject private var model = AppModel()
 
+    init() {
+        BrandFont.registerAll()
+    }
+
     var body: some Scene {
         MenuBarExtra {
             PopoverView(model: model)
