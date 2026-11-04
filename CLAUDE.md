@@ -29,7 +29,12 @@ The user's Mac has only the Command Line Tools, not Xcode, so `xcodebuild` doesn
 scripts/run.sh                            # swiftc build of build/local/GoodThoughts.app, ad-hoc signed, then opens it
 scripts/run.sh --no-open                  # build only; CI runs this too so it keeps working
 swift scripts/make-menubar-icon.swift     # regenerate GoodThoughts/Resources/MenuBarIcon.pdf
+swift scripts/make-app-icon.swift         # regenerate GoodThoughts/Resources/AppIcon.icns
+swift scripts/make-sample-wallpapers.swift  # regenerate the placeholder PNGs in GoodThoughts/Sample
+scripts/make-dmg.sh <app> <out.dmg>       # pack an app into a drag-to-install disk image
 ```
+
+Releases: pushing a `v*` tag runs `.github/workflows/release.yml` (Developer ID signing, notarisation, `.dmg`, GitHub Release). Setup and secrets are in `docs/RELEASING.md`. Tagging and releasing are the user's call: never push a tag yourself.
 
 `run.sh` reads its build settings from `project.yml` and copies every non-Swift file under `GoodThoughts/` into `Contents/Resources`, flattened as Xcode does. It can't compile asset catalogs or expand macros, so don't add either; keep resources as plain files. That rules out `#Preview` and, in the macOS 27 SDK, SwiftUI's `@State` (now a macro): keep view state in an `ObservableObject` held by `@StateObject`, or in `AppModel`. `@StateObject`, `@ObservedObject`, `@Published` and `@Environment` are fine. The agent can't see the screen (no Screen Recording permission), so the user checks the UI by hand.
 
