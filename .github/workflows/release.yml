@@ -1,0 +1,146 @@
+name: Release
+
+# Builds a Developer ID signed, notarised and stapled .dmg and attaches it to a
+# GitHub Release. Runs only when a v* tag is pushed (or by hand), and does nothing
+# useful until the secrets in docs/RELEASING.md exist.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build, without the v (e.g. 0.1.0). Makes a draft release."
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      VERSION: ${{ inputs.version || github.ref_name }}
+      KEYCHAIN: ${{ runner.temp }}/release.keychain-db
+    steps:
+      - name: Check the signing secrets are set
+        env:
+          CERT: ${{ secrets.DEVELOPER_ID_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+          KEY: ${{ secrets.NOTARY_KEY_P8_BASE64 }}
+          KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          ISSUER: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          missing=()
+          for name in CERT CERT_PASSWORD TEAM KEY KEY_ID ISSUER; do
+            [[ -n "${!name}" ]] || missing+=("$name")
+          done
+          if (( ${#missing[@]} )); then
+            echo "::error::Missing release secrets (${missing[*]}). See docs/RELEASING.md."
+            exit 1
+          fi
+          echo "VERSION=${VERSION#v}" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: command -v xcodegen || brew install xcodegen
+
+      - name: Generate the Xcode project
+        run: xcodegen generate
+
+      - name: Import the Developer ID certificate
+        env:
+          CERT: ${{ secrets.DEVELOPER_ID_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+        run: |
+          keychain_password=$(uuidgen)
+          echo "$CERT" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$keychain_password" "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$keychain_password" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+          security find-identity -v -p codesigning "$KEYCHAIN" | grep "Developer ID Application"
+
+      - name: Archive
+        env:
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcodebuild archive \
+            -project GoodThoughts.xcodeproj \
+            -scheme GoodThoughts \
+            -configuration Release \
+            -destination 'generic/platform=macOS' \
+            -archivePath build/GoodThoughts.xcarchive \
+            MARKETING_VERSION="$VERSION" \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            DEVELOPMENT_TEAM="$TEAM" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Developer ID Application" \
+            OTHER_CODE_SIGN_FLAGS="--timestamp --keychain $KEYCHAIN" \
+            | tee archive.log | grep -E '(error|warning):|ARCHIVE (SUCCEEDED|FAILED)' || true
+          grep -q 'ARCHIVE SUCCEEDED' archive.log
+
+      - name: Export the signed app
+        env:
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          sed "s/TEAM_ID_PLACEHOLDER/$TEAM/" scripts/release/ExportOptions.plist > "$RUNNER_TEMP/ExportOptions.plist"
+          xcodebuild -exportArchive \
+            -archivePath build/GoodThoughts.xcarchive \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath build/export
+          codesign --verify --deep --strict --verbose=2 build/export/GoodThoughts.app
+          codesign -d --entitlements - build/export/GoodThoughts.app
+
+      - name: Notarise and staple the app
+        env:
+          KEY: ${{ secrets.NOTARY_KEY_P8_BASE64 }}
+          KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          ISSUER: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          echo "$KEY" | base64 --decode > "$RUNNER_TEMP/notary.p8"
+          ditto -c -k --keepParent build/export/GoodThoughts.app "$RUNNER_TEMP/GoodThoughts.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/GoodThoughts.zip" \
+            --key "$RUNNER_TEMP/notary.p8" --key-id "$KEY_ID" --issuer "$ISSUER" --wait --timeout 30m
+          xcrun stapler staple build/export/GoodThoughts.app
+          spctl --assess --type execute --verbose build/export/GoodThoughts.app
+
+      - name: Build, sign, notarise and staple the disk image
+        env:
+          KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          ISSUER: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          dmg="build/goodthoughts-$VERSION.dmg"
+          scripts/make-dmg.sh build/export/GoodThoughts.app "$dmg"
+          codesign --sign "Developer ID Application" --timestamp --keychain "$KEYCHAIN" "$dmg"
+          xcrun notarytool submit "$dmg" \
+            --key "$RUNNER_TEMP/notary.p8" --key-id "$KEY_ID" --issuer "$ISSUER" --wait --timeout 30m
+          xcrun stapler staple "$dmg"
+          spctl --assess --type open --context context:primary-signature --verbose "$dmg"
+          shasum -a 256 "$dmg" | tee "$dmg.sha256"
+          echo "DMG=$dmg" >> "$GITHUB_ENV"
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v$VERSION"
+          draft=()
+          [[ "${{ github.event_name }}" == "workflow_dispatch" ]] && draft=(--draft --target "$GITHUB_SHA")
+          gh release create "$tag" "$DMG" "$DMG.sha256" \
+            --title "goodthoughts $VERSION" --generate-notes "${draft[@]}"
+
+      - name: Clean up the keychain
+        if: always()
+        run: |
+          security delete-keychain "$KEYCHAIN" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/notary.p8"

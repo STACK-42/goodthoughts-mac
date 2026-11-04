@@ -9,6 +9,13 @@ The wallpapers are drawn by the goodthoughts site, which publishes them with a J
 > [!NOTE]
 > macOS has no public way to set the wallpaper on every Space, so Apply changes the current desktop only.
 
+## Install
+
+Download the `.dmg` from [Releases](https://github.com/STACK-42/goodthoughts-mac/releases), open it, and drag goodthoughts to Applications. Then click the **g** in the menu bar. Turn on *Open at login* and *Set each morning* there if you want a new wallpaper every day.
+
+> [!NOTE]
+> There are no releases yet. [docs/RELEASING.md](docs/RELEASING.md) lists the Apple Developer setup needed first.
+
 ## Requirements
 
 - macOS 13 Ventura or later
@@ -41,10 +48,12 @@ The menu bar icon is generated from the brand mark by `swift scripts/make-menuba
 
 - `project.yml`: the XcodeGen spec for the app and test targets
 - `GoodThoughts/`: the app, with bundled fonts and the icon in `Resources/`
-- `scripts/`: the local run script and the icon generator
+- `scripts/`: the local run script, the icon and placeholder-wallpaper generators, and the `.dmg` packer
+- `docs/RELEASING.md`: signing, notarisation and releases
 - `GoodThoughtsTests/`: unit tests
-- `.github/workflows/ci.yml`: builds and tests on a macOS runner for pull requests and `main`
+- `.github/workflows/ci.yml`: builds (Debug and Release) and tests on a macOS runner for pull requests and `main`
+- `.github/workflows/release.yml`: signs, notarises and publishes a `.dmg` when a `v*` tag is pushed
 
 ## Status
 
-Early development. The feed isn't live yet, so the app works from a bundled sample feed until it is.
+Feature complete for a first release. The feed isn't live yet, so debug builds use a bundled sample feed with placeholder wallpapers until it is.

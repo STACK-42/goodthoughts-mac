@@ -29,6 +29,7 @@ targets:
       properties:
         CFBundleDisplayName: goodthoughts
         CFBundleName: goodthoughts
+        CFBundleIconFile: AppIcon
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSApplicationCategoryType: public.app-category.lifestyle
