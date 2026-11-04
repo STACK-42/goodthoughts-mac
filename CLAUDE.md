@@ -31,7 +31,7 @@ scripts/run.sh --no-open                  # build only; CI runs this too so it k
 swift scripts/make-menubar-icon.swift     # regenerate GoodThoughts/Resources/MenuBarIcon.pdf
 ```
 
-`run.sh` reads its build settings from `project.yml` and copies every non-Swift file under `GoodThoughts/` into `Contents/Resources`, flattened as Xcode does. It can't compile asset catalogs or use macros (`#Preview`), so don't add either; keep resources as plain files. The agent can't see the screen (no Screen Recording permission), so the user checks the UI by hand.
+`run.sh` reads its build settings from `project.yml` and copies every non-Swift file under `GoodThoughts/` into `Contents/Resources`, flattened as Xcode does. It can't compile asset catalogs or expand macros, so don't add either; keep resources as plain files. That rules out `#Preview` and, in the macOS 27 SDK, SwiftUI's `@State` (now a macro): keep view state in an `ObservableObject` held by `@StateObject`, or in `AppModel`. `@StateObject`, `@ObservedObject`, `@Published` and `@Environment` are fine. The agent can't see the screen (no Screen Recording permission), so the user checks the UI by hand.
 
 ## Feed contract
 
