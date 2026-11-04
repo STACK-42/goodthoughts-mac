@@ -17,18 +17,20 @@ final class Updater: ObservableObject {
 
     #if canImport(Sparkle)
     private let controller: SPUStandardUpdaterController?
-    private let userDriverDelegate = GentleReminders()
+    private let userDriverDelegate: GentleReminders
     #endif
 
     init() {
         #if canImport(Sparkle)
+        let delegate = GentleReminders()
+        userDriverDelegate = delegate
         // Unit tests run inside the app; don't let them start background update checks.
         guard !Self.isRunningTests else {
             controller = nil
             return
         }
         let controller = SPUStandardUpdaterController(
-            startingUpdater: true, updaterDelegate: nil, userDriverDelegate: userDriverDelegate)
+            startingUpdater: true, updaterDelegate: nil, userDriverDelegate: delegate)
         self.controller = controller
         // As in Sparkle's SwiftUI guide: mirror canCheckForUpdates for the Updates link.
         controller.updater.publisher(for: \.canCheckForUpdates).assign(to: &$canCheck)
