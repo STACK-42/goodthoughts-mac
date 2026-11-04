@@ -42,7 +42,7 @@ swiftc \
   -swift-version 6 \
   -target "$arch-apple-macos$min_macos" \
   -parse-as-library \
-  -Onone -g \
+  -Onone -g -D DEBUG \
   -module-name "$name" \
   -o "$contents/MacOS/$name" \
   $(find "$name" -name '*.swift' | sort)
