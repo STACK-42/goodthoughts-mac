@@ -33,10 +33,15 @@ xcodebuild test  -project GoodThoughts.xcodeproj -scheme GoodThoughts -destinati
 > [!TIP]
 > Run `xcodegen generate` again after pulling changes to `project.yml` or adding files.
 
+Without Xcode, `scripts/run.sh` builds the app with the Command Line Tools and opens it. It needs XcodeGen too.
+
+The menu bar icon is generated from the brand mark by `swift scripts/make-menubar-icon.swift`. Rerun it and commit `MenuBarIcon.pdf` when the mark changes.
+
 ## Layout
 
 - `project.yml`: the XcodeGen spec for the app and test targets
-- `GoodThoughts/`: the app
+- `GoodThoughts/`: the app, with bundled fonts and the icon in `Resources/`
+- `scripts/`: the local run script and the icon generator
 - `GoodThoughtsTests/`: unit tests
 - `.github/workflows/ci.yml`: builds and tests on a macOS runner for pull requests and `main`
 
