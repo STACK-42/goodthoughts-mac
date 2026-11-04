@@ -1,8 +1,11 @@
 name: Release
 
-# Builds a Developer ID signed, notarised and stapled .dmg and attaches it to a
-# GitHub Release. Runs only when a v* tag is pushed (or by hand), and does nothing
-# useful until the secrets in docs/RELEASING.md exist.
+# Pushing a v* tag builds the app, packs a .dmg, signs it for Sparkle and publishes a
+# GitHub Release with the .dmg, its checksum and appcast.xml. Installed copies find the
+# update through SUFeedURL (…/releases/latest/download/appcast.xml).
+#
+# No Apple Developer account is involved: the app is ad-hoc signed and not notarised,
+# so first-time users approve it once in Privacy & Security (see the README).
 on:
   push:
     tags: ["v*"]
@@ -19,33 +22,29 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  # Keep in step with the Sparkle package version in project.yml.
+  SPARKLE_VERSION: "2.10.0"
+  SPARKLE_SHA256: c2bf58aa8387266ac179357b1415d6f2635f044da8be41042af32425dae6da0c
+
 jobs:
   release:
     runs-on: macos-15
-    timeout-minutes: 45
-    env:
-      VERSION: ${{ inputs.version || github.ref_name }}
+    timeout-minutes: 30
     steps:
-      - name: Check the signing secrets are set
+      - name: Work out the version
         env:
-          CERT: ${{ secrets.DEVELOPER_ID_CERT_P12_BASE64 }}
-          CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
-          TEAM: ${{ secrets.APPLE_TEAM_ID }}
-          KEY: ${{ secrets.NOTARY_KEY_P8_BASE64 }}
-          KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
-          ISSUER: ${{ secrets.NOTARY_ISSUER_ID }}
+          RAW: ${{ inputs.version || github.ref_name }}
+          KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
         run: |
-          missing=()
-          for name in CERT CERT_PASSWORD TEAM KEY KEY_ID ISSUER; do
-            [[ -n "${!name}" ]] || missing+=("$name")
-          done
-          if (( ${#missing[@]} )); then
-            echo "::error::Missing release secrets (${missing[*]}). See docs/RELEASING.md."
-            exit 1
+          version="${RAW#v}"
+          if ! [[ "$version" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
+            echo "::error::Tags must look like v1.2.0, got $RAW"; exit 1
           fi
-          echo "VERSION=${VERSION#v}" >> "$GITHUB_ENV"
-          # The runner context isn't available in job-level env, so set this here.
-          echo "KEYCHAIN=$RUNNER_TEMP/release.keychain-db" >> "$GITHUB_ENV"
+          if [[ -z "$KEY" ]]; then
+            echo "::error::The SPARKLE_ED_PRIVATE_KEY secret is missing. See docs/RELEASING.md."; exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
 
       - uses: actions/checkout@v4
 
@@ -55,25 +54,7 @@ jobs:
       - name: Generate the Xcode project
         run: xcodegen generate
 
-      - name: Import the Developer ID certificate
-        env:
-          CERT: ${{ secrets.DEVELOPER_ID_CERT_P12_BASE64 }}
-          CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
-        run: |
-          keychain_password=$(uuidgen)
-          echo "$CERT" | base64 --decode > "$RUNNER_TEMP/cert.p12"
-          security create-keychain -p "$keychain_password" "$KEYCHAIN"
-          security set-keychain-settings -lut 3600 "$KEYCHAIN"
-          security unlock-keychain -p "$keychain_password" "$KEYCHAIN"
-          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$KEYCHAIN" >/dev/null
-          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
-          rm "$RUNNER_TEMP/cert.p12"
-          security find-identity -v -p codesigning "$KEYCHAIN" | grep "Developer ID Application"
-
-      - name: Archive
-        env:
-          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Build the app
         run: |
           xcodebuild archive \
             -project GoodThoughts.xcodeproj \
@@ -82,66 +63,49 @@ jobs:
             -destination 'generic/platform=macOS' \
             -archivePath build/GoodThoughts.xcarchive \
             MARKETING_VERSION="$VERSION" \
-            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
-            DEVELOPMENT_TEAM="$TEAM" \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="Developer ID Application" \
-            OTHER_CODE_SIGN_FLAGS="--timestamp --keychain $KEYCHAIN" \
+            CURRENT_PROJECT_VERSION="$VERSION" \
             | tee archive.log | grep -E '(error|warning):|ARCHIVE (SUCCEEDED|FAILED)' || true
           grep -q 'ARCHIVE SUCCEEDED' archive.log
+          app=build/GoodThoughts.xcarchive/Products/Applications/GoodThoughts.app
+          codesign --verify --deep --strict --verbose=2 "$app"
+          test -d "$app/Contents/Frameworks/Sparkle.framework"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$VERSION"
+          echo "APP=$app" >> "$GITHUB_ENV"
 
-      - name: Export the signed app
-        env:
-          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Pack the disk image
         run: |
-          sed "s/TEAM_ID_PLACEHOLDER/$TEAM/" scripts/release/ExportOptions.plist > "$RUNNER_TEMP/ExportOptions.plist"
-          xcodebuild -exportArchive \
-            -archivePath build/GoodThoughts.xcarchive \
-            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
-            -exportPath build/export
-          codesign --verify --deep --strict --verbose=2 build/export/GoodThoughts.app
-          codesign -d --entitlements - build/export/GoodThoughts.app
+          name="goodthoughts-$VERSION.dmg"
+          scripts/make-dmg.sh "$APP" "build/$name"
+          (cd build && shasum -a 256 "$name") | tee "build/$name.sha256"
+          echo "DMG=build/$name" >> "$GITHUB_ENV"
 
-      - name: Notarise and staple the app
-        env:
-          KEY: ${{ secrets.NOTARY_KEY_P8_BASE64 }}
-          KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
-          ISSUER: ${{ secrets.NOTARY_ISSUER_ID }}
+      - name: Fetch Sparkle's signing tool
         run: |
-          echo "$KEY" | base64 --decode > "$RUNNER_TEMP/notary.p8"
-          ditto -c -k --keepParent build/export/GoodThoughts.app "$RUNNER_TEMP/GoodThoughts.zip"
-          xcrun notarytool submit "$RUNNER_TEMP/GoodThoughts.zip" \
-            --key "$RUNNER_TEMP/notary.p8" --key-id "$KEY_ID" --issuer "$ISSUER" --wait --timeout 30m
-          xcrun stapler staple build/export/GoodThoughts.app
-          spctl --assess --type execute --verbose build/export/GoodThoughts.app
+          curl -fsSL -o "$RUNNER_TEMP/sparkle.tar.xz" \
+            "https://github.com/sparkle-project/Sparkle/releases/download/$SPARKLE_VERSION/Sparkle-$SPARKLE_VERSION.tar.xz"
+          echo "$SPARKLE_SHA256  $RUNNER_TEMP/sparkle.tar.xz" | shasum -a 256 -c -
+          mkdir -p "$RUNNER_TEMP/sparkle"
+          tar -xf "$RUNNER_TEMP/sparkle.tar.xz" -C "$RUNNER_TEMP/sparkle" bin
+          echo "SIGN_UPDATE=$RUNNER_TEMP/sparkle/bin/sign_update" >> "$GITHUB_ENV"
 
-      - name: Build, sign, notarise and staple the disk image
+      - name: Sign the update and write the appcast
         env:
-          KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
-          ISSUER: ${{ secrets.NOTARY_ISSUER_ID }}
+          KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
         run: |
-          dmg="build/goodthoughts-$VERSION.dmg"
-          scripts/make-dmg.sh build/export/GoodThoughts.app "$dmg"
-          codesign --sign "Developer ID Application" --timestamp --keychain "$KEYCHAIN" "$dmg"
-          xcrun notarytool submit "$dmg" \
-            --key "$RUNNER_TEMP/notary.p8" --key-id "$KEY_ID" --issuer "$ISSUER" --wait --timeout 30m
-          xcrun stapler staple "$dmg"
-          spctl --assess --type open --context context:primary-signature --verbose "$dmg"
-          shasum -a 256 "$dmg" | tee "$dmg.sha256"
-          echo "DMG=$dmg" >> "$GITHUB_ENV"
+          umask 077
+          printf '%s' "$KEY" > "$RUNNER_TEMP/ed.key"
+          SPARKLE_KEY_FILE="$RUNNER_TEMP/ed.key" scripts/release/make-appcast.sh "$DMG" "$VERSION" > build/appcast.xml
+          rm -f "$RUNNER_TEMP/ed.key"
+          xmllint --noout build/appcast.xml
+          cat build/appcast.xml
 
       - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag="v$VERSION"
           draft=()
-          [[ "${{ github.event_name }}" == "workflow_dispatch" ]] && draft=(--draft --target "$GITHUB_SHA")
-          gh release create "$tag" "$DMG" "$DMG.sha256" \
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            draft=(--draft --target "$GITHUB_SHA")
+          fi
+          gh release create "v$VERSION" "$DMG" "$DMG.sha256" build/appcast.xml \
             --title "goodthoughts $VERSION" --generate-notes "${draft[@]}"
-
-      - name: Clean up the keychain
-        if: always()
-        run: |
-          security delete-keychain "$KEYCHAIN" 2>/dev/null || true
-          rm -f "$RUNNER_TEMP/notary.p8"

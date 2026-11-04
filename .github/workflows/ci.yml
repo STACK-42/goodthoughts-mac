@@ -63,6 +63,8 @@ jobs:
           grep -q 'BUILD SUCCEEDED' release.log
           app=build/Build/Products/Release/GoodThoughts.app
           test -f "$app/Contents/Resources/AppIcon.icns"
+          test -d "$app/Contents/Frameworks/Sparkle.framework"
+          codesign --verify --deep --strict "$app"
           if ls "$app/Contents/Resources" | grep -q '^sample-'; then
             echo "::error::The sample feed leaked into the Release build"; exit 1
           fi
