@@ -8,6 +8,7 @@ struct PopoverView: View {
     static let gutter: CGFloat = 16
 
     @ObservedObject var model: AppModel
+    @ObservedObject var updater: Updater
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var dayOffset: Int { model.dayOffset }
@@ -19,7 +20,7 @@ struct PopoverView: View {
             Header(number: quote?.number)
             content
             SettingsSection(model: model)
-            Footer(status: statusLine)
+            Footer(status: statusLine, updater: updater)
         }
         .frame(width: Self.width)
         .background(Theme.paper)
@@ -414,6 +415,7 @@ private struct SettingsSection: View {
 
 private struct Footer: View {
     let status: String
+    @ObservedObject var updater: Updater
 
     var body: some View {
         VStack(spacing: 0) {
@@ -424,6 +426,13 @@ private struct Footer: View {
                     .foregroundStyle(Theme.muted)
                     .lineLimit(1)
                 Spacer()
+                if updater.isAvailable {
+                    Button { updater.checkForUpdates() } label: { Label(text: "Updates", color: Theme.ink) }
+                        .buttonStyle(.plain)
+                        .disabled(!updater.canCheck)
+                        .help("Check for a newer version")
+                        .padding(.trailing, 12)
+                }
                 Button { NSApplication.shared.terminate(nil) } label: { Label(text: "Quit", color: Theme.ink) }
                     .buttonStyle(.plain)
                     .keyboardShortcut("q")

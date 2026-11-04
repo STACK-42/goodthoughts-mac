@@ -7,15 +7,24 @@ options:
   createIntermediateGroups: true
   generateEmptyDirectories: true
 
+packages:
+  # Automatic updates. Keep in step with SPARKLE_VERSION in .github/workflows/release.yml.
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.10.0
+
 settings:
   base:
     SWIFT_VERSION: "6.0"
     MACOSX_DEPLOYMENT_TARGET: "13.0"
-    # Ad-hoc signing until round 7 sets up a Developer ID.
+    # Ad-hoc signed and not notarised: the app ships without an Apple Developer
+    # account, so users approve it once in Privacy & Security (see the README).
     CODE_SIGN_IDENTITY: "-"
     CODE_SIGN_STYLE: Manual
     DEVELOPMENT_TEAM: ""
-    ENABLE_HARDENED_RUNTIME: YES
+    # Hardened runtime only matters for notarisation, and with ad-hoc signatures its
+    # library validation can refuse to load the embedded Sparkle framework.
+    ENABLE_HARDENED_RUNTIME: NO
     DEAD_CODE_STRIPPING: YES
 
 targets:
@@ -24,6 +33,8 @@ targets:
     platform: macOS
     sources:
       - path: GoodThoughts
+    dependencies:
+      - package: Sparkle
     info:
       path: GoodThoughts/Info.plist
       properties:
@@ -36,17 +47,30 @@ targets:
         LSUIElement: true
         LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
         NSHumanReadableCopyright: ""
+        # Sparkle: the appcast attached to the latest GitHub Release, checked daily,
+        # with updates verified against this EdDSA public key.
+        SUFeedURL: https://github.com/STACK-42/goodthoughts-mac/releases/latest/download/appcast.xml
+        SUPublicEDKey: sLUtly3gcM4BQNl/9O6ZBaxWD2u3U5fqOgQGfTjSlq8=
+        SUEnableAutomaticChecks: true
+        SUScheduledCheckInterval: 86400
+        # Sandboxed apps install updates through Sparkle's installer service.
+        SUEnableInstallerLauncherService: true
     entitlements:
       path: GoodThoughts/GoodThoughts.entitlements
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.network.client: true
+        # Lets the sandboxed app talk to Sparkle's installer (Sparkle's sandboxing guide).
+        com.apple.security.temporary-exception.mach-lookup.global-name:
+          - "$(PRODUCT_BUNDLE_IDENTIFIER)-spks"
+          - "$(PRODUCT_BUNDLE_IDENTIFIER)-spki"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: page.goodthoughts.mac
         PRODUCT_NAME: GoodThoughts
+        # Releases override both from the tag; Sparkle compares CFBundleVersion.
         MARKETING_VERSION: "0.1.0"
-        CURRENT_PROJECT_VERSION: "1"
+        CURRENT_PROJECT_VERSION: "0.1.0"
         GENERATE_INFOPLIST_FILE: NO
         ENABLE_PREVIEWS: YES
       configs:

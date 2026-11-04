@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct GoodThoughtsApp: App {
     @StateObject private var model = AppModel()
+    @StateObject private var updater = Updater()
 
     init() {
         BrandFont.registerAll()
@@ -10,7 +11,7 @@ struct GoodThoughtsApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            PopoverView(model: model)
+            PopoverView(model: model, updater: updater)
         } label: {
             Image(nsImage: MenuBarIcon.image)
                 .accessibilityLabel("goodthoughts")

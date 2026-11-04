@@ -5,6 +5,7 @@
 #   scripts/run.sh --no-open  build only (CI uses this to keep the script working)
 #
 # This is a convenience for trying the app. The real build is xcodebuild in CI.
+# Swift packages can't be linked here, so this build has no Sparkle updater.
 # It reads the build settings it needs from project.yml, so keep the two in step.
 set -euo pipefail
 
@@ -71,8 +72,9 @@ print -n "APPL????" > "$contents/PkgInfo"
 find "$name" -type f ! -name '*.swift' ! -name 'Info.plist' ! -name '*.entitlements' ! -name '.DS_Store' \
   -exec cp {} "$contents/Resources/" \;
 
-codesign --force --sign - --options runtime \
-  --entitlements "$name/$name.entitlements" "$app" 2>/dev/null
+# The entitlements name Sparkle's installer services after the bundle id.
+sed "s/\$(PRODUCT_BUNDLE_IDENTIFIER)/$bundle_id/g" "$name/$name.entitlements" > "build/local/$name.entitlements"
+codesign --force --sign - --entitlements "build/local/$name.entitlements" "$app" 2>/dev/null
 codesign --verify --strict "$app"
 print "Built $app"
 
