@@ -51,6 +51,22 @@ jobs:
             | tee test.log | grep -E '(error|warning):|Test Case .* (passed|failed)|Executed|TEST (SUCCEEDED|FAILED)' || true
           grep -q 'TEST SUCCEEDED' test.log
 
+      - name: Build the Release configuration
+        run: |
+          xcodebuild build \
+            -project GoodThoughts.xcodeproj \
+            -scheme GoodThoughts \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath build \
+            | tee release.log | grep -E '(error|warning):|BUILD (SUCCEEDED|FAILED)' || true
+          grep -q 'BUILD SUCCEEDED' release.log
+          app=build/Build/Products/Release/GoodThoughts.app
+          test -f "$app/Contents/Resources/AppIcon.icns"
+          if ls "$app/Contents/Resources" | grep -q '^sample-'; then
+            echo "::error::The sample feed leaked into the Release build"; exit 1
+          fi
+
       - name: Build with the local run script
         run: scripts/run.sh --no-open
 
