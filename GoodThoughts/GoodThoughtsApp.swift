@@ -14,8 +14,9 @@ struct GoodThoughtsApp: App {
         } label: {
             Image(nsImage: MenuBarIcon.image)
                 .accessibilityLabel("goodthoughts")
-                // The label exists from launch, so this loads the feed at startup.
-                .task { await model.refresh() }
+                // The label exists from launch, so this loads the feed at startup and
+                // starts watching for new days.
+                .task { model.startWatching() }
         }
         .menuBarExtraStyle(.window)
     }

@@ -2,22 +2,6 @@ import XCTest
 @testable import GoodThoughts
 
 @MainActor
-private final class FakeDesktop: Desktop {
-    var screens: [DesktopScreen]
-    var failOn: String?
-    private(set) var set: [String: URL] = [:]
-
-    init(_ screens: [DesktopScreen]) { self.screens = screens }
-
-    func setImage(_ file: URL, for screen: DesktopScreen) throws {
-        if screen.id == failOn { throw ApplyError.couldNotSet(screen: screen.name, reason: "test") }
-        set[screen.id] = file
-    }
-
-    func currentImages() -> Set<URL> { Set(set.values) }
-}
-
-@MainActor
 final class WallpaperApplierTests: XCTestCase {
     private var directory: URL!
     private var host: String!
