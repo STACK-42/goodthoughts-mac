@@ -61,7 +61,6 @@ targets:
       - path: GoodThoughtsTests
       # The sample feed doubles as the test fixture, copied into the test bundle.
       - path: GoodThoughts/Sample
-        group: GoodThoughtsTests/Fixtures
         buildPhase: resources
     dependencies:
       - target: GoodThoughts
