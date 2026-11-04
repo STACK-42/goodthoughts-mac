@@ -19,3 +19,7 @@ xcuserdata/
 
 # macOS
 .DS_Store
+
+# Also written by XcodeGen from the info and entitlements keys in project.yml
+GoodThoughts/Info.plist
+GoodThoughts/GoodThoughts.entitlements
