@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/icon.png" width="128" height="128" alt="goodthoughts app icon: a serif g over a yellow highlighter bar"></p>
+
 # goodthoughts for Mac
 
 [![CI](https://img.shields.io/github/actions/workflow/status/STACK-42/goodthoughts-mac/ci.yml?branch=main&label=CI)](https://github.com/STACK-42/goodthoughts-mac/actions/workflows/ci.yml)
