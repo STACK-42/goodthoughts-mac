@@ -1,0 +1,59 @@
+{
+  "version": "1.0",
+  "generated": "2026-11-04T00:00:00Z",
+  "note": "Sample feed for debug builds and tests until https://goodthoughts.page/wallpapers.json is live. Wallpaper paths are relative to this file. The PNGs are placeholders from scripts/make-sample-wallpapers.swift.",
+  "quotes": [
+    {
+      "id": "seneca-imagination",
+      "number": "No. 001",
+      "text": "We suffer more often in imagination than in reality.",
+      "author": "Seneca",
+      "source": "Letters to Lucilius, 13",
+      "lang": "en",
+      "url": "https://goodthoughts.page/q/seneca-imagination/",
+      "wallpapers": {
+        "16x10": "sample-001-16x10.png",
+        "16x9": "sample-001-16x9.png"
+      }
+    },
+    {
+      "id": "allen-calmness",
+      "number": "No. 004",
+      "text": "Calmness of mind is one of the beautiful jewels of wisdom.",
+      "author": "James Allen",
+      "source": "As a Man Thinketh",
+      "lang": "en",
+      "url": "https://goodthoughts.page/q/allen-calmness/",
+      "wallpapers": {
+        "16x10": "sample-004-16x10.png",
+        "16x9": "sample-004-16x9.png"
+      }
+    },
+    {
+      "id": "kanafani-gazelles",
+      "number": "No. 011",
+      "text": "الغزلان تحب أن تموت عند أهلها، الصقور لا يهمها أين تموت.",
+      "author": "غسان كنفاني",
+      "source": "",
+      "lang": "ar",
+      "url": "https://goodthoughts.page/q/kanafani-gazelles/",
+      "wallpapers": {
+        "16x10": "sample-011-16x10.png",
+        "16x9": "sample-011-16x9.png"
+      }
+    },
+    {
+      "id": "behind-the-throat",
+      "number": "No. 013",
+      "text": "لا يعرف الناس عني غير حنجرة، يا ليتهم عرفوا ما خلف حنجرتي.",
+      "author": "",
+      "source": "",
+      "lang": "ar",
+      "url": "https://goodthoughts.page/q/behind-the-throat/",
+      "wallpapers": {
+        "16x10": "sample-013-16x10.png",
+        "16x9": "sample-013-16x9.png"
+      }
+    }
+  ]
+}

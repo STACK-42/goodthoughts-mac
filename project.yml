@@ -48,12 +48,20 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
         GENERATE_INFOPLIST_FILE: NO
         ENABLE_PREVIEWS: YES
+      configs:
+        Release:
+          # The sample feed and placeholder wallpapers are a debug fallback only.
+          EXCLUDED_SOURCE_FILE_NAMES: "sample-*"
 
   GoodThoughtsTests:
     type: bundle.unit-test
     platform: macOS
     sources:
       - path: GoodThoughtsTests
+      # The sample feed doubles as the test fixture, copied into the test bundle.
+      - path: GoodThoughts/Sample
+        group: GoodThoughtsTests/Fixtures
+        buildPhase: resources
     dependencies:
       - target: GoodThoughts
     settings:
