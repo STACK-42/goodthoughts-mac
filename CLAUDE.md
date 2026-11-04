@@ -1,6 +1,6 @@
 # goodthoughts-mac
 
-A macOS menu bar app that shows one quote a day from goodthoughts (https://goodthoughts.page) and sets it as the desktop wallpaper with one click.
+A macOS menu bar app that shows one quote a day from goodthoughts (<https://goodthoughts.page>) and sets it as the desktop wallpaper with one click.
 
 The site renders the wallpapers; the app doesn't. The site publishes wallpaper-sized PNGs and a JSON feed, and the app reads the feed, picks today's quote, shows it and applies its image. Never redraw quotes in Swift: the design lives in one place, the site's `site/src/lib/og.ts` (Satori and resvg).
 
@@ -23,11 +23,15 @@ xcodebuild test  -project GoodThoughts.xcodeproj -scheme GoodThoughts -destinati
 open GoodThoughts.xcodeproj               # then Cmd-R to run
 ```
 
-The user's Mac has only the Command Line Tools, not Xcode, so `xcodebuild` doesn't work locally and CI is where the app is built and tested. Locally, check that `xcodegen generate` succeeds and type-check the app with:
+The user's Mac has only the Command Line Tools, not Xcode, so `xcodebuild` doesn't work locally and CI is where the app is built and tested. Locally:
 
 ```sh
-swiftc -typecheck -swift-version 6 -target arm64-apple-macos13.0 -parse-as-library $(find GoodThoughts -name '*.swift')
+scripts/run.sh                            # swiftc build of build/local/GoodThoughts.app, ad-hoc signed, then opens it
+scripts/run.sh --no-open                  # build only; CI runs this too so it keeps working
+swift scripts/make-menubar-icon.swift     # regenerate GoodThoughts/Resources/MenuBarIcon.pdf
 ```
+
+`run.sh` reads its build settings from `project.yml` and copies every non-Swift file under `GoodThoughts/` into `Contents/Resources`, flattened as Xcode does. It can't compile asset catalogs or use macros (`#Preview`), so don't add either; keep resources as plain files. The agent can't see the screen (no Screen Recording permission), so the user checks the UI by hand.
 
 ## Feed contract
 
