@@ -1,0 +1,63 @@
+name: CI
+
+# The repo is private, so macOS minutes are billed at 10x.
+# Run on pull requests and on main only, and cancel superseded runs.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: command -v xcodegen || brew install xcodegen
+
+      - name: Generate the Xcode project
+        run: xcodegen generate
+
+      - name: Show toolchain
+        run: xcodebuild -version
+
+      - name: Build
+        run: |
+          xcodebuild build \
+            -project GoodThoughts.xcodeproj \
+            -scheme GoodThoughts \
+            -destination 'platform=macOS' \
+            -derivedDataPath build \
+            | tee build.log | grep -E '(error|warning):|BUILD (SUCCEEDED|FAILED)' || true
+          grep -q 'BUILD SUCCEEDED' build.log
+
+      - name: Test
+        run: |
+          xcodebuild test \
+            -project GoodThoughts.xcodeproj \
+            -scheme GoodThoughts \
+            -destination 'platform=macOS' \
+            -derivedDataPath build \
+            -resultBundlePath TestResults.xcresult \
+            | tee test.log | grep -E '(error|warning):|Test Case .* (passed|failed)|Executed|TEST (SUCCEEDED|FAILED)' || true
+          grep -q 'TEST SUCCEEDED' test.log
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            TestResults.xcresult
+            build.log
+            test.log
+          retention-days: 7
