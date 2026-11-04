@@ -1,3 +1,4 @@
+import ServiceManagement
 import XCTest
 @testable import GoodThoughts
 
@@ -130,6 +131,14 @@ final class AutomationTests: XCTestCase {
         XCTAssertEqual(model.loginItem, .enabled)
         model.setLaunchAtLogin(false)
         XCTAssertEqual(model.loginItem, .disabled)
+    }
+
+    func testNeverRegisteredCountsAsOffNotUnavailable() {
+        // SMAppService.mainApp reports .notFound before the first registration.
+        XCTAssertEqual(SystemLoginItem.map(.notFound), .disabled)
+        XCTAssertEqual(SystemLoginItem.map(.notRegistered), .disabled)
+        XCTAssertEqual(SystemLoginItem.map(.enabled), .enabled)
+        XCTAssertEqual(SystemLoginItem.map(.requiresApproval), .requiresApproval)
     }
 
     func testOpenAtLoginNeedingApproval() {

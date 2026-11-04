@@ -385,7 +385,6 @@ private struct SettingsSection: View {
                                  set: { on in model.setLaunchAtLogin(on) })) {
                 Label(text: "Open at login", color: Theme.ink)
             }
-            .disabled(model.loginItem == .unavailable)
             if model.applyDaily && model.loginItem == .disabled {
                 hint("Turn on Open at login so the morning wallpaper still happens after a restart.")
             }
