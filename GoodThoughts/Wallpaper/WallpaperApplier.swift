@@ -94,6 +94,15 @@ struct WallpaperApplier {
         }
     }
 
+    /// The cached wallpaper file for the main screen (the one with the menu bar), for the preview.
+    func previewFile(for quote: Quote) async throws -> (file: URL, ratio: AspectRatio) {
+        let size = desktop.screens.first?.size ?? CGSize(width: 16, height: 10)
+        guard let key = AspectRatio.closestKey(to: size, among: quote.wallpapers.keys),
+              let remote = quote.wallpapers[key], let ratio = AspectRatio(key) else { throw ApplyError.noWallpaper }
+        let file = try await cache.file(quoteID: quote.id, ratioKey: key, remote: remote)
+        return (file, ratio)
+    }
+
     /// Downloads everything first and only then changes the desktops, so a failed
     /// download never leaves one screen updated and another not.
     @discardableResult

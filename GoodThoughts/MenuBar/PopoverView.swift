@@ -1,101 +1,294 @@
 import SwiftUI
 
-/// The window that drops down from the menu bar icon.
-/// Plain layout for now; round 5 brings the real design.
+/// The window that drops down from the menu bar icon. Values follow the brand
+/// reference (HybridA): paper ground, ink hairlines, mono labels, the highlighter
+/// as the only colour.
 struct PopoverView: View {
-    static let width: CGFloat = 320
+    static let width: CGFloat = 360
+    static let gutter: CGFloat = 16
 
     @ObservedObject var model: AppModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var dayOffset: Int { model.dayOffset }
+    private var day: Int { model.todayNumber + dayOffset }
+    private var quote: Quote? { model.quote(forDay: day) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(spacing: 0) {
+            Header(number: quote?.number)
             content
-                .padding(16)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            Divider()
-
-            HStack {
-                Text(statusLine)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                Spacer()
-                Button("Quit") { NSApplication.shared.terminate(nil) }
-                    .keyboardShortcut("q")
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            Footer(status: statusLine)
         }
         .frame(width: Self.width)
+        .background(Theme.paper)
+        .foregroundStyle(Theme.ink)
         .task { await model.refresh() }
     }
 
     @ViewBuilder private var content: some View {
         switch model.phase {
         case .loading:
-            ProgressView().controlSize(.small)
+            ProgressView()
+                .controlSize(.small)
+                .frame(maxWidth: .infinity, minHeight: 160)
         case .failed(let error):
-            message(error)
+            Notice(text: error.errorDescription ?? "Something went wrong.")
+                .padding(Self.gutter)
         case .ready(let loaded):
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 14) {
+                DayNavigator(label: dayLabel, isToday: dayOffset == 0, move: move)
                 if loaded.updateRequired {
-                    message(.unsupportedVersion(""))
+                    Notice(text: FeedError.unsupportedVersion("").errorDescription ?? "")
                 }
-                if let quote = model.todaysQuote {
-                    QuoteSummary(quote: quote)
-                    ApplyControls(model: model, quote: quote)
+                if let quote {
+                    VStack(alignment: .leading, spacing: 14) {
+                        WallpaperPreview(quote: quote, model: model)
+                        QuoteText(quote: quote)
+                        Byline(quote: quote)
+                        if let url = quote.url { QuoteLink(url: url) }
+                        ApplyControls(model: model, quote: quote)
+                    }
+                    .id(quote.id)
+                    .transition(.opacity)
                 } else {
-                    Text("The feed has no quotes yet.").foregroundStyle(.secondary)
+                    Text("The feed has no quotes yet.")
+                        .font(Typography.meta())
+                        .foregroundStyle(Theme.muted)
                 }
             }
+            .padding(Self.gutter)
         }
     }
 
-    private func message(_ error: FeedError) -> some View {
-        Text(error.errorDescription ?? "Something went wrong.")
-            .font(.system(size: 13))
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
+    private func move(_ step: Int) {
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
+            model.dayOffset = step == 0 ? 0 : dayOffset + step
+        }
+    }
+
+    private var dayLabel: String {
+        switch dayOffset {
+        case 0: return "Today"
+        case -1: return "Yesterday"
+        case 1: return "Tomorrow"
+        default:
+            let formatter = DateFormatter()
+            formatter.setLocalizedDateFormatFromTemplate("EEE d MMM")
+            return formatter.string(from: model.date(forDay: day))
+        }
     }
 
     private var statusLine: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
         switch model.feed?.source {
-        case .network?: return "v\(version)"
         case .cache?: return "v\(version) · offline, saved quotes"
         case .sample?: return "v\(version) · sample feed"
-        case nil: return "v\(version)"
+        default: return "v\(version)"
         }
     }
 }
 
-private struct QuoteSummary: View {
-    let quote: Quote
+// MARK: - Pieces
+
+/// An uppercase mono label with the brand's 0.1em tracking.
+private struct Label: View {
+    let text: String
+    var size: CGFloat = 10
+    var color: Color = Theme.muted
 
     var body: some View {
-        VStack(alignment: quote.language.isRightToLeft ? .trailing : .leading, spacing: 8) {
-            Text(quote.number.uppercased())
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Text(quote.text)
-                .font(.system(size: 17, design: .serif))
-                .fixedSize(horizontal: false, vertical: true)
-                .environment(\.layoutDirection, quote.language.isRightToLeft ? .rightToLeft : .leftToRight)
-                .frame(maxWidth: .infinity, alignment: quote.language.isRightToLeft ? .trailing : .leading)
-                .multilineTextAlignment(quote.language.isRightToLeft ? .trailing : .leading)
-            if !byline.isEmpty {
-                Text(byline)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+        Text(text.uppercased())
+            .font(Typography.label(size))
+            .tracking(Typography.labelTracking(size))
+            .foregroundStyle(color)
+    }
+}
+
+private struct Hairline: View {
+    var color: Color = Theme.rule
+    var body: some View { Rectangle().fill(color).frame(height: 1) }
+}
+
+/// "good" + "thoughts" on the highlighter, and the catalogue number in a ruled tag.
+private struct Header: View {
+    let number: String?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                HStack(spacing: 0) {
+                    Text("good")
+                    Text("thoughts")
+                        .foregroundStyle(Theme.onHighlighter)
+                        .padding(.horizontal, 3)
+                        .background(Theme.highlighter)
+                }
+                .font(Typography.heading(26))
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("goodthoughts")
+                Spacer()
+                if let number, !number.isEmpty {
+                    Text(number)
+                        .font(Typography.label(11))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .overlay(Rectangle().stroke(Theme.ink, lineWidth: 1))
+                        .accessibilityLabel("Number \(number.replacingOccurrences(of: "No. ", with: ""))")
+                }
+            }
+            .padding(.horizontal, PopoverView.gutter)
+            .padding(.top, 14)
+            .padding(.bottom, 12)
+            Hairline(color: Theme.ink)
+        }
+    }
+}
+
+private struct DayNavigator: View {
+    let label: String
+    let isToday: Bool
+    let move: (Int) -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            arrow("chevron.left", "Previous day", step: -1, key: .leftArrow)
+            Label(text: label, size: 11, color: Theme.ink)
+                .frame(maxWidth: .infinity)
+                .accessibilityAddTraits(.isHeader)
+            arrow("chevron.right", "Next day", step: 1, key: .rightArrow)
+        }
+        .overlay(alignment: .trailing) {
+            if !isToday {
+                Button { move(0) } label: { Label(text: "Today", color: Theme.muted) }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut("t", modifiers: [])
+                    .padding(.trailing, 28)
+                    .help("Back to today")
             }
         }
     }
 
-    private var byline: String {
-        [quote.author, quote.source].filter { !$0.isEmpty }.joined(separator: " · ")
+    private func arrow(_ symbol: String, _ name: String, step: Int, key: KeyEquivalent) -> some View {
+        Button { move(step) } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .semibold))
+                .frame(width: 24, height: 22)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut(key, modifiers: [])
+        .accessibilityLabel(name)
+        .help(name)
+    }
+}
+
+/// The site's wallpaper for the main screen, downloaded through the same cache Apply uses.
+private struct WallpaperPreview: View {
+    let quote: Quote
+    @ObservedObject var model: AppModel
+    // @StateObject, not @State: @State is a macro in newer SDKs, which the
+    // Command Line Tools build in scripts/run.sh can't expand.
+    @StateObject private var preview = PreviewState()
+
+    var body: some View {
+        ZStack {
+            Theme.wash
+            if let image = preview.image {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else if preview.failed {
+                Label(text: "No preview", color: Theme.faint)
+            } else {
+                ProgressView().controlSize(.small)
+            }
+        }
+        .aspectRatio(preview.ratio, contentMode: .fit)
+        .frame(maxWidth: .infinity)
+        .clipped()
+        .overlay(Rectangle().stroke(Theme.ink, lineWidth: 1))
+        .accessibilityElement()
+        .accessibilityLabel("Wallpaper preview")
+        .task(id: quote.id) { await preview.load(quote, from: model) }
+    }
+}
+
+@MainActor
+private final class PreviewState: ObservableObject {
+    @Published var image: NSImage?
+    @Published var ratio: Double = 16.0 / 10.0
+    @Published var failed = false
+
+    func load(_ quote: Quote, from model: AppModel) async {
+        image = nil
+        failed = false
+        if let found = await model.previewFile(for: quote) {
+            ratio = found.ratio.value
+            image = NSImage(contentsOf: found.file)
+            failed = image == nil
+        } else {
+            failed = true
+        }
+    }
+}
+
+/// The quote in EB Garamond, or Amiri laid out right to left for Arabic.
+private struct QuoteText: View {
+    let quote: Quote
+
+    var body: some View {
+        let rtl = quote.language.isRightToLeft
+        Text(quote.text)
+            .font(Typography.quote(rightToLeft: rtl))
+            .lineSpacing(Typography.quoteLineSpacing(rightToLeft: rtl))
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .environment(\.layoutDirection, rtl ? .rightToLeft : .leftToRight)
+            .textSelection(.enabled)
+    }
+}
+
+/// AUTHOR and SOURCE columns, as on the specimen card. Empty fields are left out.
+private struct Byline: View {
+    let quote: Quote
+
+    var body: some View {
+        let fields = [("Author", quote.author), ("Source", quote.source)].filter { !$0.1.isEmpty }
+        if !fields.isEmpty {
+            VStack(spacing: 10) {
+                Hairline()
+                HStack(alignment: .top, spacing: 12) {
+                    ForEach(fields, id: \.0) { name, value in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Label(text: name)
+                            Text(value)
+                                .font(Typography.metaValue(value))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct QuoteLink: View {
+    let url: URL
+
+    var body: some View {
+        Link(destination: url) {
+            HStack(spacing: 4) {
+                Label(text: "Read on goodthoughts.page", color: Theme.ink)
+                    .underline(color: Theme.rule)
+                Image(systemName: "arrow.up.right").font(.system(size: 9, weight: .semibold))
+            }
+        }
+        .foregroundStyle(Theme.ink)
+        .help(url.absoluteString)
     }
 }
 
@@ -104,29 +297,88 @@ private struct ApplyControls: View {
     @ObservedObject var model: AppModel
     let quote: Quote
 
+    private var applied: Bool { model.applyState == .applied(quote.id) }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
-                Button {
-                    Task { await model.apply(quote) }
-                } label: {
-                    Text(model.applyState == .applied(quote.id) ? "Applied" : "Apply as wallpaper")
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                Task { await model.apply(quote) }
+            } label: {
+                HStack(spacing: 8) {
+                    if model.applyState == .applying {
+                        ProgressView().controlSize(.small)
+                    }
+                    Text(applied ? "Applied" : "Set as wallpaper")
                 }
-                .disabled(model.applyState == .applying || quote.wallpapers.isEmpty)
-                if model.applyState == .applying {
-                    ProgressView().controlSize(.small)
-                }
+                .frame(maxWidth: .infinity)
             }
+            .buttonStyle(HighlighterButtonStyle())
+            .disabled(model.applyState == .applying || quote.wallpapers.isEmpty)
+            .keyboardShortcut(.defaultAction)
+
             if case .failed(let error) = model.applyState {
-                Text(error.errorDescription ?? "Couldn't set the wallpaper.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
+                Notice(text: error.errorDescription ?? "Couldn't set the wallpaper.")
             }
             Text("Applies to the current desktop. Other Spaces keep their wallpaper.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .font(Typography.meta(10))
+                .foregroundStyle(Theme.muted)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// The highlighter as a button: the one place colour appears, for the one action.
+private struct HighlighterButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(Typography.label(11))
+            .tracking(Typography.labelTracking(11))
+            .textCase(.uppercase)
+            .foregroundStyle(isEnabled ? Theme.onHighlighter : Theme.faint)
+            .padding(.vertical, 9)
+            .background(isEnabled ? Theme.highlighter : Theme.wash)
+            .overlay(Rectangle().stroke(isEnabled ? Palette.ink : Theme.rule, lineWidth: 1))
+            .opacity(configuration.isPressed ? 0.8 : 1)
+            .contentShape(Rectangle())
+    }
+}
+
+/// A short message with a highlighter mark in the margin. Errors stay in ink:
+/// the brand has no red.
+private struct Notice: View {
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Rectangle().fill(Theme.highlighter).frame(width: 3)
+            Text(text)
+                .font(Typography.meta(11))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+private struct Footer: View {
+    let status: String
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Hairline()
+            HStack {
+                Text(status)
+                    .font(Typography.meta(10))
+                    .foregroundStyle(Theme.muted)
+                    .lineLimit(1)
+                Spacer()
+                Button { NSApplication.shared.terminate(nil) } label: { Label(text: "Quit", color: Theme.ink) }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut("q")
+            }
+            .padding(.horizontal, PopoverView.gutter)
+            .padding(.vertical, 10)
         }
     }
 }

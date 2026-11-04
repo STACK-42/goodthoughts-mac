@@ -22,6 +22,8 @@ final class AppModel: ObservableObject {
 
     @Published private(set) var phase: Phase = .loading
     @Published private(set) var applyState: ApplyState = .idle
+    /// Days from today the popover is showing. 0 is today.
+    @Published var dayOffset = 0
     /// The moment "today" was last worked out. Moves forward on refresh.
     @Published private(set) var now: Date = .now
 
@@ -34,6 +36,16 @@ final class AppModel: ObservableObject {
          applier: WallpaperApplier = WallpaperApplier(desktop: SystemDesktop(), cache: .standard())) {
         self.loader = loader
         self.applier = applier
+    }
+
+    /// The calendar date of a day number, for labels.
+    func date(forDay day: Int) -> Date {
+        DailyPick.calendar().date(byAdding: .day, value: day - todayNumber, to: now) ?? now
+    }
+
+    /// The wallpaper image file shown in the popover's preview.
+    func previewFile(for quote: Quote) async -> (file: URL, ratio: AspectRatio)? {
+        try? await applier.previewFile(for: quote)
     }
 
     /// Downloads the quote's wallpaper and sets it on every screen (current Space only).
