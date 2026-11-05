@@ -17,8 +17,8 @@ The wallpapers are drawn by the goodthoughts site, which publishes them with a J
 2. Open it from Applications. The app isn't notarised by Apple (there's no paid developer account behind it), so macOS stops it the first time:
    - **macOS 15 Sequoia and later:** macOS says it couldn't verify the app. Click **Done**, then open **System Settings → Privacy & Security**, scroll to *Security*, click **Open Anyway** next to "GoodThoughts was blocked", and confirm with your password.
    - **macOS 13 Ventura and 14 Sonoma:** Control-click GoodThoughts in Applications, choose **Open**, then **Open** again.
-3. Click the **g** in the menu bar. Turn on *Open at login* and *Set each morning* there if you want a new wallpaper every day.
-4. Optionally, turn on *Reminder* and pick a time (09:00 by default) to get a notification with the day's quote. Click it to open the quote's page. It comes once a day, or you can have it repeat every 1 to 6 hours until a time you choose (21:00 by default). macOS asks for permission the first time; if you say no, the popover links to System Settings → Notifications.
+3. Click the **g** in the menu bar, then the gear (or press ⌘,) for settings. Turn on *Open at login* and *Set each morning* there if you want a new wallpaper every day.
+4. Optionally, turn on *Reminder* and pick a time (09:00 by default) to get a notification with the day's quote. Click it to open the quote's page. It comes once a day, or you can have it repeat every 1 to 6 hours until a time you choose (21:00 by default). macOS asks for permission the first time; if you say no, the settings page links to System Settings → Notifications.
 
 You only do this once. After that the app updates itself: it checks once a day and asks before installing, or click **Updates** in the popover.
 
