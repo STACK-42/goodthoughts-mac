@@ -18,8 +18,63 @@ final class ReminderPlanTests: XCTestCase {
         DailyPick.calendar(in: zone(tz)).dateComponents([.year, .month, .day, .hour, .minute], from: date)
     }
 
-    private func plan(_ now: Date, _ tz: String, time: ReminderTime? = nil, days: Int = 7) -> [PlannedReminder] {
-        ReminderPlan.make(quotes: quotes, now: now, timeZone: zone(tz), time: time ?? nine, days: days)
+    private func plan(_ now: Date, _ tz: String, time: ReminderTime? = nil, repeating: ReminderRepeat = .once,
+                      days: Int = 7) -> [PlannedReminder] {
+        ReminderPlan.make(quotes: quotes, now: now, timeZone: zone(tz), time: time ?? nine, repeating: repeating, days: days)
+    }
+
+    private func every(_ hours: Int, until: Int = 21) -> ReminderRepeat {
+        ReminderRepeat(everyHours: hours, untilHour: until)
+    }
+
+    // MARK: Repeats
+
+    func testRepeatTimesStopAtTheEndHour() {
+        func hm(_ times: [ReminderTime]) -> [String] { times.map { String(format: "%02d:%02d", $0.hour, $0.minute) } }
+        XCTAssertEqual(hm(ReminderRepeat.once.times(from: nine)), ["09:00"])
+        XCTAssertEqual(hm(every(3).times(from: nine)), ["09:00", "12:00", "15:00", "18:00", "21:00"])
+        XCTAssertEqual(hm(every(3).times(from: ReminderTime(hour: 9, minute: 30))), ["09:30", "12:30", "15:30", "18:30"])
+        XCTAssertEqual(hm(every(4, until: 23).times(from: ReminderTime(hour: 22, minute: 0))), ["22:00"])
+        XCTAssertEqual(hm(every(2).times(from: ReminderTime(hour: 22, minute: 0))), ["22:00"],
+                       "A start after the end hour still fires once")
+    }
+
+    func testRepeatsEachDayWithThatDaysQuote() {
+        let tz = "Asia/Qatar"
+        let reminders = plan(date(2026, 11, 5, 8, in: tz), tz, repeating: every(4))  // 09, 13, 17, 21
+        XCTAssertEqual(reminders.count, 28)
+        XCTAssertEqual(reminders.prefix(5).map(\.identifier),
+                       ["reminder-2026-11-05-0900", "reminder-2026-11-05-1300", "reminder-2026-11-05-1700",
+                        "reminder-2026-11-05-2100", "reminder-2026-11-06-0900"])
+        XCTAssertEqual(Set(reminders.map(\.identifier)).count, 28)
+        for reminder in reminders {
+            XCTAssertEqual(reminder.quote, quotes[DailyPick.index(for: reminder.fireDate, count: quotes.count, in: zone(tz))!])
+            XCTAssertEqual(local(reminder.fireDate, tz).hour, reminder.time.hour)
+        }
+    }
+
+    func testMiddayStartKeepsTodaysRemainingRepeats() {
+        let tz = "Europe/London"
+        let reminders = plan(date(2026, 11, 5, 14, in: tz), tz, repeating: every(3))  // 09 12 15 18 21
+        XCTAssertEqual(reminders.prefix(3).map(\.identifier),
+                       ["reminder-2026-11-05-1500", "reminder-2026-11-05-1800", "reminder-2026-11-05-2100"])
+        XCTAssertEqual(Set(reminders.map { $0.identifier.dropLast(5) }).count, 7, "Today counts as one of the seven days")
+        XCTAssertEqual(reminders.count, 3 + 6 * 5)
+    }
+
+    func testHourlyStopsBelowMacOSsPendingLimit() {
+        let reminders = plan(date(2026, 11, 5, 6, in: "UTC"), "UTC", time: ReminderTime(hour: 7, minute: 0),
+                             repeating: every(1, until: 22))  // 16 a day
+        XCTAssertEqual(reminders.count, ReminderPlan.maxPending)
+        XCTAssertLessThan(ReminderPlan.maxPending, 64)
+        XCTAssertEqual(reminders.first?.identifier, "reminder-2026-11-05-0700")
+        XCTAssertEqual(reminders.map(\.fireDate), reminders.map(\.fireDate).sorted())
+    }
+
+    func testRepeatValuesAreClamped() {
+        XCTAssertEqual(ReminderRepeat(everyHours: -1, untilHour: 30), ReminderRepeat(everyHours: 0, untilHour: 23))
+        XCTAssertTrue(ReminderRepeat.once.isOnce)
+        XCTAssertFalse(every(2).isOnce)
     }
 
     func testStartsTodayWhenTheTimeIsStillAhead() {
@@ -27,7 +82,7 @@ final class ReminderPlanTests: XCTestCase {
         XCTAssertEqual(reminders.count, 7)
         XCTAssertEqual(reminders.first?.date, CivilDate(year: 2026, month: 11, day: 5))
         XCTAssertEqual(reminders.last?.date, CivilDate(year: 2026, month: 11, day: 11))
-        XCTAssertEqual(reminders.first?.identifier, "reminder-2026-11-05")
+        XCTAssertEqual(reminders.first?.identifier, "reminder-2026-11-05-0900")
     }
 
     func testStartsTomorrowWhenTodaysTimeHasPassed() {
@@ -48,9 +103,10 @@ final class ReminderPlanTests: XCTestCase {
         XCTAssertEqual(midnight.first?.date, CivilDate(year: 2026, month: 11, day: 7))
         // Month and year ends roll over.
         let newYear = plan(date(2026, 12, 29, 10, in: tz), tz)
-        XCTAssertEqual(newYear.map(\.identifier), ["reminder-2026-12-30", "reminder-2026-12-31", "reminder-2027-01-01",
-                                                   "reminder-2027-01-02", "reminder-2027-01-03", "reminder-2027-01-04",
-                                                   "reminder-2027-01-05"])
+        XCTAssertEqual(newYear.map(\.identifier), ["reminder-2026-12-30-0900", "reminder-2026-12-31-0900",
+                                                   "reminder-2027-01-01-0900", "reminder-2027-01-02-0900",
+                                                   "reminder-2027-01-03-0900", "reminder-2027-01-04-0900",
+                                                   "reminder-2027-01-05-0900"])
     }
 
     func testEveryReminderFiresAtTheChosenLocalTime() {
