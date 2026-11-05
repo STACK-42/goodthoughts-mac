@@ -414,7 +414,8 @@ private struct SettingsSection: View {
     }
 }
 
-/// The morning reminder: on or off, its time, and what to do if notifications aren't allowed.
+/// The reminder: on or off, its time, how often it repeats, and what to do if
+/// notifications aren't allowed.
 private struct ReminderSettings: View {
     @ObservedObject var model: AppModel
 
@@ -423,7 +424,7 @@ private struct ReminderSettings: View {
             HStack(spacing: 8) {
                 Toggle(isOn: Binding(get: { model.reminderEnabled },
                                      set: { on in Task { await model.setReminderEnabled(on) } })) {
-                    Label(text: "Morning reminder", color: Theme.ink)
+                    Label(text: "Reminder", color: Theme.ink)
                 }
                 .help("A notification with the day's quote")
                 if model.reminderEnabled {
@@ -435,6 +436,30 @@ private struct ReminderSettings: View {
                 }
             }
             if model.reminderEnabled {
+                HStack(spacing: 6) {
+                    Picker("Repeat", selection: every) {
+                        ForEach(ReminderRepeat.choices, id: \.self) { hours in
+                            Text(Self.everyLabel(hours)).tag(hours)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .fixedSize()
+                    .help("Repeat the day's quote every few hours")
+                    if !model.reminderRepeat.isOnce {
+                        Label(text: "until", color: Theme.muted)
+                        Picker("Until", selection: until) {
+                            ForEach(model.reminderTime.hour...23, id: \.self) { hour in
+                                Text(String(format: "%02d:00", hour)).tag(hour)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .fixedSize()
+                        .help("No reminders after this time")
+                    }
+                }
+                .font(Typography.meta(11))
                 switch model.reminderAuthorization {
                 case .denied:
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -461,6 +486,33 @@ private struct ReminderSettings: View {
                 }
             }
         }
+    }
+
+    static func everyLabel(_ hours: Int) -> String {
+        switch hours {
+        case 0: "Once a day"
+        case 1: "Every hour"
+        default: "Every \(hours) hours"
+        }
+    }
+
+    private var every: Binding<Int> {
+        Binding(
+            get: { model.reminderRepeat.everyHours },
+            set: { hours in
+                Task { await model.setReminderRepeat(ReminderRepeat(everyHours: hours, untilHour: model.reminderRepeat.untilHour)) }
+            }
+        )
+    }
+
+    /// Clamped to the first reminder's hour, so the menu always has the value it shows.
+    private var until: Binding<Int> {
+        Binding(
+            get: { max(model.reminderRepeat.untilHour, model.reminderTime.hour) },
+            set: { hour in
+                Task { await model.setReminderRepeat(ReminderRepeat(everyHours: model.reminderRepeat.everyHours, untilHour: hour)) }
+            }
+        )
     }
 
     /// The reminder time as a Date today, for the picker.
