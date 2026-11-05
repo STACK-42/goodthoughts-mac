@@ -24,6 +24,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var applyState: ApplyState = .idle
     /// Days from today the popover is showing. 0 is today.
     @Published var dayOffset = 0
+    /// Whether the popover shows the settings page instead of the quote.
+    @Published var showingSettings = false
     /// The moment "today" was last worked out. Moves forward on refresh.
     @Published private(set) var now: Date
     /// Set today's wallpaper automatically on the first chance each day.

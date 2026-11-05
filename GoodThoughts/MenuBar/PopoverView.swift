@@ -17,9 +17,14 @@ struct PopoverView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Header(number: quote?.number)
-            content
-            SettingsSection(model: model)
+            Header(number: quote?.number, showingSettings: model.showingSettings, toggleSettings: toggleSettings)
+            if model.showingSettings {
+                SettingsPage(model: model)
+                    .transition(.opacity)
+            } else {
+                content
+                    .transition(.opacity)
+            }
             Footer(status: statusLine, updater: updater)
         }
         .frame(width: Self.width)
@@ -64,6 +69,12 @@ struct PopoverView: View {
                 }
             }
             .padding(Self.gutter)
+        }
+    }
+
+    private func toggleSettings() {
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.15)) {
+            model.showingSettings.toggle()
         }
     }
 
@@ -116,13 +127,16 @@ private struct Hairline: View {
     var body: some View { Rectangle().fill(color).frame(height: 1) }
 }
 
-/// "good" + "thoughts" on the highlighter, and the catalogue number in a ruled tag.
+/// "good" + "thoughts" on the highlighter, the catalogue number in a ruled tag, and
+/// the button that swaps between the quote and the settings page.
 private struct Header: View {
     let number: String?
+    let showingSettings: Bool
+    let toggleSettings: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .center, spacing: 10) {
                 HStack(spacing: 0) {
                     Text("good")
                     Text("thoughts")
@@ -134,7 +148,10 @@ private struct Header: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("goodthoughts")
                 Spacer()
-                if let number, !number.isEmpty {
+                if showingSettings {
+                    Label(text: "Settings", size: 11, color: Theme.ink)
+                        .accessibilityAddTraits(.isHeader)
+                } else if let number, !number.isEmpty {
                     Text(number)
                         .font(Typography.label(11))
                         .padding(.horizontal, 7)
@@ -142,6 +159,16 @@ private struct Header: View {
                         .overlay(Rectangle().stroke(Theme.ink, lineWidth: 1))
                         .accessibilityLabel("Number \(number.replacingOccurrences(of: "No. ", with: ""))")
                 }
+                Button(action: toggleSettings) {
+                    Image(systemName: showingSettings ? "xmark" : "gearshape")
+                        .font(.system(size: showingSettings ? 11 : 13, weight: .semibold))
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut(showingSettings ? .cancelAction : KeyboardShortcut(",", modifiers: .command))
+                .accessibilityLabel(showingSettings ? "Close settings" : "Settings")
+                .help(showingSettings ? "Back to the quote" : "Settings (⌘,)")
             }
             .padding(.horizontal, PopoverView.gutter)
             .padding(.top, 14)
@@ -367,20 +394,22 @@ private struct Notice: View {
     }
 }
 
-/// Daily apply and open at login.
-private struct SettingsSection: View {
+/// Daily apply, the reminder and open at login, on their own page so the quote view
+/// stays short.
+private struct SettingsPage: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Hairline()
-                .padding(.bottom, 4)
+            group("Wallpaper")
             Toggle(isOn: Binding(get: { model.applyDaily },
                                  set: { on in Task { await model.setApplyDaily(on) } })) {
                 Label(text: "Set each morning", color: Theme.ink)
             }
             .help("Sets the day's wallpaper the first time the Mac is awake each day")
+            group("Notifications").padding(.top, 10)
             ReminderSettings(model: model)
+            group("General").padding(.top, 10)
             Toggle(isOn: Binding(get: { model.loginItem == .enabled || model.loginItem == .requiresApproval },
                                  set: { on in model.setLaunchAtLogin(on) })) {
                 Label(text: "Open at login", color: Theme.ink)
@@ -402,8 +431,13 @@ private struct SettingsSection: View {
             }
         }
         .toggleStyle(.checkbox)
-        .padding(.horizontal, PopoverView.gutter)
-        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(PopoverView.gutter)
+    }
+
+    private func group(_ title: String) -> some View {
+        Label(text: title, color: Theme.muted)
+            .accessibilityAddTraits(.isHeader)
     }
 
     private func hint(_ text: String) -> some View {
