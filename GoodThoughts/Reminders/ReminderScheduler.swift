@@ -79,7 +79,7 @@ struct SystemNotificationCenter: NotificationCentering {
     }
 }
 
-/// Keeps the next week of reminders scheduled. Calls are queued one after another so
+/// Keeps the next week of reminders scheduled (or as much of it as macOS allows). Calls are queued one after another so
 /// two triggers arriving together can't interleave removing and adding.
 @MainActor
 final class ReminderScheduler {
@@ -107,15 +107,16 @@ final class ReminderScheduler {
     /// Replaces the app's pending reminders with a fresh plan, or clears them when the
     /// reminder is off or not allowed. Other pending notifications are left alone.
     @discardableResult
-    func reschedule(enabled: Bool, quotes: [Quote], time: ReminderTime, now: Date,
-                    timeZone: TimeZone = .current) async -> ReminderAuthorization {
+    func reschedule(enabled: Bool, quotes: [Quote], time: ReminderTime, repeating: ReminderRepeat = .once,
+                    now: Date, timeZone: TimeZone = .current) async -> ReminderAuthorization {
         let previous = queue
         let center = self.center
         let task = Task<ReminderAuthorization, Never> {
             await previous?.value
             let status = await center.authorization()
             let plan = enabled && status == .authorized
-                ? ReminderPlan.make(quotes: quotes, now: now, timeZone: timeZone, time: time) : []
+                ? ReminderPlan.make(quotes: quotes, now: now, timeZone: timeZone, time: time, repeating: repeating)
+                : []
             // Adding a request with an existing identifier replaces it, so only the
             // app's reminders that dropped out of the plan need removing.
             let keep = Set(plan.map(\.identifier))

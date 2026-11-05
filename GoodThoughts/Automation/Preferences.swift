@@ -9,6 +9,8 @@ final class Preferences {
         static let reminderEnabled = "reminderEnabled"
         static let reminderHour = "reminderHour"
         static let reminderMinute = "reminderMinute"
+        static let reminderEveryHours = "reminderEveryHours"
+        static let reminderUntilHour = "reminderUntilHour"
     }
 
     private let defaults: UserDefaults
@@ -44,6 +46,19 @@ final class Preferences {
         set {
             defaults.set(newValue.hour, forKey: Key.reminderHour)
             defaults.set(newValue.minute, forKey: Key.reminderMinute)
+        }
+    }
+
+    /// How often the reminder repeats after its first time. Once a day until changed.
+    var reminderRepeat: ReminderRepeat {
+        get {
+            guard let every = defaults.object(forKey: Key.reminderEveryHours) as? Int else { return .once }
+            let until = defaults.object(forKey: Key.reminderUntilHour) as? Int ?? ReminderRepeat.once.untilHour
+            return ReminderRepeat(everyHours: every, untilHour: until)
+        }
+        set {
+            defaults.set(newValue.everyHours, forKey: Key.reminderEveryHours)
+            defaults.set(newValue.untilHour, forKey: Key.reminderUntilHour)
         }
     }
 }

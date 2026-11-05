@@ -20,13 +20,24 @@ final class ReminderSchedulerTests: XCTestCase {
 
     func testReschedulingReplacesRatherThanDuplicates() async {
         let center = FakeNotificationCenter()
-        center.seed("reminder-2026-10-01")  // a stale one from an older plan
+        center.seed("reminder-2026-10-01")  // a stale one from an older version's plan
         let scheduler = ReminderScheduler(center: center)
         await scheduler.reschedule(enabled: true, quotes: quotes, time: .default, now: now)
         await scheduler.reschedule(enabled: true, quotes: quotes, time: ReminderTime(hour: 6, minute: 15), now: now)
         XCTAssertEqual(center.pendingIDs.count, 7)
         XCTAssertFalse(center.pendingIDs.contains("reminder-2026-10-01"))
         XCTAssertTrue(center.scheduled.allSatisfy { $0.time == ReminderTime(hour: 6, minute: 15) })
+    }
+
+    func testSwitchingFromRepeatsBackToOnceRemovesTheExtras() async {
+        let center = FakeNotificationCenter()
+        let scheduler = ReminderScheduler(center: center)
+        await scheduler.reschedule(enabled: true, quotes: quotes, time: .default,
+                                   repeating: ReminderRepeat(everyHours: 3, untilHour: 21), now: now)
+        XCTAssertEqual(center.pendingIDs.count, 35)
+        await scheduler.reschedule(enabled: true, quotes: quotes, time: .default, repeating: .once, now: now)
+        XCTAssertEqual(center.pendingIDs.count, 7)
+        XCTAssertTrue(center.scheduled.allSatisfy { $0.time == .default })
     }
 
     func testTurningItOffRemovesOnlyOurReminders() async {

@@ -179,6 +179,11 @@ final class AutomationTests: XCTestCase {
         await model.dayMayHaveChanged()
         XCTAssertEqual(notifications.scheduled.count, 7, "A new day tops the week back up")
 
+        XCTAssertEqual(model.reminderRepeat, .once, "Once a day by default")
+        await model.setReminderRepeat(ReminderRepeat(everyHours: 4, untilHour: 20))  // 07:30 11:30 15:30 19:30
+        XCTAssertEqual(notifications.scheduled.count, 2 + 6 * 4, "Noon: today keeps 15:30 and 19:30")
+        XCTAssertEqual(makeModel().reminderRepeat, ReminderRepeat(everyHours: 4, untilHour: 20), "The repeat persists")
+
         await model.setReminderEnabled(false)
         XCTAssertTrue(notifications.pendingIDs.isEmpty)
     }

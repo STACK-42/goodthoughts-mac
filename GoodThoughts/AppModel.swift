@@ -30,9 +30,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var applyDaily: Bool
     @Published private(set) var loginItem: LoginItemStatus
     @Published private(set) var loginItemError: String?
-    /// A notification with the day's quote each morning.
+    /// A notification with the day's quote each morning, optionally repeated every few hours.
     @Published private(set) var reminderEnabled: Bool
     @Published private(set) var reminderTime: ReminderTime
+    @Published private(set) var reminderRepeat: ReminderRepeat
     @Published private(set) var reminderAuthorization: ReminderAuthorization = .notDetermined
     /// macOS's reason, when it refused to ask for notification permission.
     @Published private(set) var reminderError: String?
@@ -63,6 +64,7 @@ final class AppModel: ObservableObject {
         applyDaily = preferences.applyDaily
         reminderEnabled = preferences.reminderEnabled
         reminderTime = preferences.reminderTime
+        reminderRepeat = preferences.reminderRepeat
         loginItem = login.status
     }
 
@@ -173,7 +175,7 @@ final class AppModel: ObservableObject {
         if enabled { await dayMayHaveChanged() }
     }
 
-    // MARK: Morning reminder
+    // MARK: Reminders
 
     /// Turning it on asks for notification permission the first time. If permission is
     /// refused the setting stays on, so reminders start once it's allowed in System Settings.
@@ -188,6 +190,13 @@ final class AppModel: ObservableObject {
         guard time != reminderTime else { return }
         reminderTime = time
         preferences.reminderTime = time
+        await rescheduleReminders()
+    }
+
+    func setReminderRepeat(_ repeating: ReminderRepeat) async {
+        guard repeating != reminderRepeat else { return }
+        reminderRepeat = repeating
+        preferences.reminderRepeat = repeating
         await rescheduleReminders()
     }
 
@@ -215,7 +224,7 @@ final class AppModel: ObservableObject {
             return
         }
         reminderAuthorization = await reminders.reschedule(
-            enabled: reminderEnabled, quotes: quotes, time: reminderTime, now: clock())
+            enabled: reminderEnabled, quotes: quotes, time: reminderTime, repeating: reminderRepeat, now: clock())
     }
 
     func openNotificationSettings() {
