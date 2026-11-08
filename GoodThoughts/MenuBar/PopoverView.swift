@@ -9,7 +9,6 @@ struct PopoverView: View {
 
     @ObservedObject var model: AppModel
     @ObservedObject var updater: Updater
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var dayOffset: Int { model.dayOffset }
     private var day: Int { model.todayNumber + dayOffset }
@@ -20,15 +19,19 @@ struct PopoverView: View {
             Header(number: quote?.number, showingSettings: model.showingSettings, toggleSettings: toggleSettings)
             if model.showingSettings {
                 SettingsPage(model: model)
-                    .transition(.opacity)
             } else {
                 content
-                    .transition(.opacity)
             }
             Footer(status: statusLine, updater: updater)
         }
         .frame(width: Self.width)
         .background(Theme.paper)
+        .background(
+            GeometryReader { proxy in
+                WindowSizer(height: proxy.size.height)
+            }
+        )
+        .fixedSize(horizontal: false, vertical: true)
         .foregroundStyle(Theme.ink)
         .task {
             model.refreshLoginItem()
@@ -60,8 +63,6 @@ struct PopoverView: View {
                         if let url = quote.url { QuoteLink(url: url) }
                         ApplyControls(model: model, quote: quote)
                     }
-                    .id(quote.id)
-                    .transition(.opacity)
                 } else {
                     Text("The feed has no quotes yet.")
                         .font(Typography.meta())
@@ -73,15 +74,11 @@ struct PopoverView: View {
     }
 
     private func toggleSettings() {
-        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.15)) {
-            model.showingSettings.toggle()
-        }
+        model.showingSettings.toggle()
     }
 
     private func move(_ step: Int) {
-        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
-            model.dayOffset = step == 0 ? 0 : dayOffset + step
-        }
+        model.dayOffset = step == 0 ? 0 : dayOffset + step
     }
 
     private var dayLabel: String {
@@ -599,6 +596,55 @@ private struct Footer: View {
             }
             .padding(.horizontal, PopoverView.gutter)
             .padding(.vertical, 10)
+        }
+    }
+}
+
+/// Resizes the MenuBarExtra window when the popover switches between the quote and the
+/// shorter settings page, keeping its top edge pinned under the menu bar.
+private struct WindowSizer: NSViewRepresentable {
+    let height: CGFloat
+
+    func makeNSView(context: Context) -> SizingView {
+        let view = SizingView()
+        view.targetHeight = height
+        return view
+    }
+
+    func updateNSView(_ nsView: SizingView, context: Context) {
+        nsView.targetHeight = height
+    }
+}
+
+private final class SizingView: NSView {
+    var targetHeight: CGFloat = 0 {
+        didSet {
+            if abs(oldValue - targetHeight) > 0.5 { resizeWindow() }
+        }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        resizeWindow()
+    }
+
+    private func resizeWindow() {
+        guard targetHeight > 0 else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let window = self.window else { return }
+            let height = self.targetHeight
+            guard height > 0 else { return }
+            let size = NSSize(width: PopoverView.width, height: height)
+            window.contentMinSize = size
+            window.contentMaxSize = size
+            window.contentViewController?.preferredContentSize = size
+            let contentHeight = window.contentView?.bounds.height ?? window.frame.height
+            let target = height + (window.frame.height - contentHeight)
+            var frame = window.frame
+            guard abs(frame.height - target) > 0.5 else { return }
+            frame.origin.y += frame.height - target
+            frame.size.height = target
+            window.setFrame(frame, display: true)
         }
     }
 }
