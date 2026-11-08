@@ -479,7 +479,7 @@ private struct ReminderSettings: View {
                     .labelsHidden()
                     .pickerStyle(.menu)
                     .fixedSize()
-                    .help("Repeat the day's quote every few hours")
+                    .help("Send another quote every few hours")
                     if !model.reminderRepeat.isOnce {
                         Label(text: "until", color: Theme.muted)
                         Picker("Until", selection: until) {

@@ -80,8 +80,9 @@ enum ReminderPlan {
     }
 
     /// Reminders for the next `days` days that still have one ahead, starting today if
-    /// any of today's times is still ahead. Each day's reminders all carry the quote
-    /// `DailyPick` gives that date. Never more than `limit` in total.
+    /// any of today's times is still ahead. The first reminder of each day carries the
+    /// quote `DailyPick` gives that date, and later repeats shuffle the rest of the feed.
+    /// Never more than `limit` in total.
     static func make(quotes: [Quote], now: Date, timeZone: TimeZone, time: ReminderTime,
                      repeating: ReminderRepeat = .once, days: Int = defaultDays,
                      limit: Int = maxPending) -> [PlannedReminder] {
@@ -95,14 +96,15 @@ enum ReminderPlan {
         for offset in 0...days where daysPlanned < days && plan.count < limit {
             guard let day = calendar.date(byAdding: .day, value: offset, to: today) else { continue }
             let parts = calendar.dateComponents([.year, .month, .day], from: day)
+            let dayNumber = DailyPick.dayNumber(for: day, in: timeZone)
             guard let year = parts.year, let month = parts.month, let dayOfMonth = parts.day,
-                  let index = DailyPick.index(forDay: DailyPick.dayNumber(for: day, in: timeZone),
-                                              count: quotes.count) else { continue }
+                  DailyPick.index(forDay: dayNumber, count: quotes.count) != nil else { continue }
             let date = CivilDate(year: year, month: month, day: dayOfMonth)
-            let todays = times.compactMap { time -> PlannedReminder? in
+            let todays = times.enumerated().compactMap { slot, time -> PlannedReminder? in
                 guard let fire = calendar.date(from: DateComponents(year: year, month: month, day: dayOfMonth,
                                                                     hour: time.hour, minute: time.minute)),
-                      fire > now else { return nil }
+                      fire > now,
+                      let index = quoteIndex(forDay: dayNumber, slot: slot, count: quotes.count) else { return nil }
                 return PlannedReminder(date: date, quote: quotes[index], fireDate: fire, time: time)
             }
             guard !todays.isEmpty else { continue }
@@ -110,6 +112,36 @@ enum ReminderPlan {
             daysPlanned += 1
         }
         return plan
+    }
+
+    /// The quote index for a reminder slot on `dayNumber`. Slot 0 is the day's quote from
+    /// `DailyPick`; later repeats shuffle the remaining quotes with a seed from the date so
+    /// a day's reminders don't repeat the same quote and rescheduling stays stable.
+    static func quoteIndex(forDay dayNumber: Int, slot: Int, count: Int) -> Int? {
+        guard let daily = DailyPick.index(forDay: dayNumber, count: count) else { return nil }
+        guard slot > 0, count > 1 else { return daily }
+        let others = (0..<count).filter { $0 != daily }
+        let pass = (slot - 1) / others.count
+        var generator = SeededGenerator(seed: dayNumber, pass: pass)
+        let shuffled = others.shuffled(using: &generator)
+        return shuffled[(slot - 1) % others.count]
+    }
+}
+
+private struct SeededGenerator: RandomNumberGenerator {
+    private var state: UInt64
+
+    init(seed: Int, pass: Int) {
+        state = UInt64(bitPattern: Int64(seed)) &* 0x9E37_79B9_7F4A_7C15
+            &+ UInt64(bitPattern: Int64(pass)) &* 0xBF58_476D_1CE4_E5B9
+    }
+
+    mutating func next() -> UInt64 {
+        state &+= 0x9E37_79B9_7F4A_7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+        return z ^ (z >> 31)
     }
 }
 

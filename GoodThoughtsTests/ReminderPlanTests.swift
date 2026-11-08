@@ -39,7 +39,7 @@ final class ReminderPlanTests: XCTestCase {
                        "A start after the end hour still fires once")
     }
 
-    func testRepeatsEachDayWithThatDaysQuote() {
+    func testRepeatsStartWithTodaysQuoteThenPickOthersFromTheFeed() {
         let tz = "Asia/Qatar"
         let reminders = plan(date(2026, 11, 5, 8, in: tz), tz, repeating: every(4))  // 09, 13, 17, 21
         XCTAssertEqual(reminders.count, 28)
@@ -47,19 +47,35 @@ final class ReminderPlanTests: XCTestCase {
                        ["reminder-2026-11-05-0900", "reminder-2026-11-05-1300", "reminder-2026-11-05-1700",
                         "reminder-2026-11-05-2100", "reminder-2026-11-06-0900"])
         XCTAssertEqual(Set(reminders.map(\.identifier)).count, 28)
-        for reminder in reminders {
-            XCTAssertEqual(reminder.quote, quotes[DailyPick.index(for: reminder.fireDate, count: quotes.count, in: zone(tz))!])
-            XCTAssertEqual(local(reminder.fireDate, tz).hour, reminder.time.hour)
+        for dayChunk in stride(from: 0, to: reminders.count, by: 4).map({ Array(reminders[$0..<$0 + 4]) }) {
+            let first = dayChunk[0]
+            let daily = quotes[DailyPick.index(for: first.fireDate, count: quotes.count, in: zone(tz))!]
+            XCTAssertEqual(first.quote, daily, "The first reminder of the day is today's quote")
+            XCTAssertEqual(Set(dayChunk.map(\.quote.id)).count, 4,
+                           "A day's repeats pick different quotes rather than repeating today's quote")
+            for reminder in dayChunk {
+                XCTAssertEqual(local(reminder.fireDate, tz).hour, reminder.time.hour)
+            }
         }
     }
 
-    func testMiddayStartKeepsTodaysRemainingRepeats() {
+    func testMiddayRescheduleKeepsTodaysRemainingRepeatQuotes() {
         let tz = "Europe/London"
-        let reminders = plan(date(2026, 11, 5, 14, in: tz), tz, repeating: every(3))  // 09 12 15 18 21
-        XCTAssertEqual(reminders.prefix(3).map(\.identifier),
+        let morning = plan(date(2026, 11, 5, 8, in: tz), tz, repeating: every(3))
+        let midday = plan(date(2026, 11, 5, 14, in: tz), tz, repeating: every(3))  // 09 12 15 18 21
+        XCTAssertEqual(midday.prefix(3).map(\.identifier),
                        ["reminder-2026-11-05-1500", "reminder-2026-11-05-1800", "reminder-2026-11-05-2100"])
-        XCTAssertEqual(Set(reminders.map { $0.identifier.dropLast(5) }).count, 7, "Today counts as one of the seven days")
-        XCTAssertEqual(reminders.count, 3 + 6 * 5)
+        XCTAssertEqual(midday.prefix(3).map(\.quote), morning.dropFirst(2).prefix(3).map(\.quote),
+                       "Rescheduling midday keeps the same quotes for the remaining slots")
+        XCTAssertEqual(Set(midday.map { $0.identifier.dropLast(5) }).count, 7, "Today counts as one of the seven days")
+        XCTAssertEqual(midday.count, 3 + 6 * 5)
+    }
+
+    func testSingleQuoteFeedRepeatsThatQuote() {
+        let solo = [quotes[0]]
+        let reminders = ReminderPlan.make(quotes: solo, now: date(2026, 11, 5, 8, in: "UTC"),
+                                          timeZone: zone("UTC"), time: nine, repeating: every(4), days: 1)
+        XCTAssertEqual(reminders.map(\.quote), Array(repeating: solo[0], count: 4))
     }
 
     func testHourlyStopsBelowMacOSsPendingLimit() {
